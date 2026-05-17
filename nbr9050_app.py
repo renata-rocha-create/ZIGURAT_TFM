@@ -27,48 +27,91 @@ st.markdown("""
 <style>
 
 :root {
-    /* ── Zigurat brand palette ── */
-    --zk-slate:   rgb(77,83,99);       /* #4D5363 — texto principal, sidebar */
-    --zk-green:   rgb(68,205,148);     /* #44CD94 — accent primário */
-    --zk-blue:    rgb(28,96,241);      /* #1C60F1 — accent secundário / links */
-
+    --zk-slate:   rgb(77,83,99);
+    --zk-green:   rgb(68,205,148);
+    --zk-blue:    rgb(28,96,241);
     --bg:         #ffffff;
     --surface:    #f4f6f9;
     --surface2:   #eaecf1;
     --border:     #d1d5de;
-    --text:       rgb(77,83,99);
-    --muted:      #8e95a6;
+    --text:       #1a1d26;
+    --muted:      #6b7280;
     --success:    #1ab87a;
     --danger:     #e03c3c;
     --warn:       #e8920a;
-
     --font: 'Trebuchet MS', Trebuchet, Arial, sans-serif;
     --mono: 'Courier New', Courier, monospace;
 }
 
-/* ── Global reset to white + Trebuchet ── */
-html, body, [class*="css"], .stApp {
+/* ── Global — fundo branco, texto escuro ── */
+html, body, .stApp, [class*="css"] {
     font-family: var(--font) !important;
     background-color: var(--bg) !important;
     color: var(--text) !important;
 }
 .stApp { background-color: var(--bg) !important; }
 
-/* ── Sidebar — slate escuro ── */
+/* ── Todos os textos no main content sempre escuros ── */
+.stApp p, .stApp span, .stApp label, .stApp div,
+.stApp h1, .stApp h2, .stApp h3, .stApp li {
+    color: var(--text) !important;
+}
+
+/* ── Sidebar: fundo slate, textos BRANCOS forçados ── */
 [data-testid="stSidebar"] {
     background: var(--zk-slate) !important;
     border-right: 1px solid #3a3f4f !important;
 }
-[data-testid="stSidebar"] * { color: #ffffff !important; font-family: var(--font) !important; }
-[data-testid="stSidebar"] .stSelectbox label,
-[data-testid="stSidebar"] .stTextInput label,
-[data-testid="stSidebar"] .stSlider label { color: #c8ccd6 !important; font-size: 0.78rem !important; }
+/* Todos os elementos dentro da sidebar: branco */
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] div,
+[data-testid="stSidebar"] small,
+[data-testid="stSidebar"] .stMarkdown { color: #ffffff !important; }
+
+/* Inputs dentro da sidebar: fundo escuro, texto branco */
+[data-testid="stSidebar"] input {
+    background: rgba(255,255,255,0.12) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 6px !important;
+    font-family: var(--font) !important;
+}
+[data-testid="stSidebar"] input::placeholder { color: rgba(255,255,255,0.4) !important; }
+
+/* Selectbox dentro da sidebar: fundo escuro */
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background: rgba(255,255,255,0.12) !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 6px !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] span,
+[data-testid="stSidebar"] [data-baseweb="select"] div {
+    color: #ffffff !important;
+    font-family: var(--font) !important;
+}
+/* Dropdown list (fora da sidebar, mas do mesmo select) */
+[data-baseweb="popover"] [role="option"] {
+    background: var(--zk-slate) !important;
+    color: #ffffff !important;
+    font-family: var(--font) !important;
+}
+[data-baseweb="popover"] [role="option"]:hover,
+[data-baseweb="popover"] [aria-selected="true"] {
+    background: rgba(68,205,148,0.25) !important;
+    color: #ffffff !important;
+}
+
+/* Slider na sidebar */
+[data-testid="stSidebar"] [data-testid="stSlider"] label { color: #e0e2e8 !important; }
+[data-testid="stSidebar"] [data-baseweb="slider"] { background: rgba(255,255,255,0.2) !important; }
 
 /* ── Hero banner ── */
 .hero-block {
     background: linear-gradient(120deg, rgb(77,83,99) 0%, rgb(50,56,72) 100%);
     border-radius: 10px;
-    padding: 1.75rem 2rem 1.75rem 2rem;
+    padding: 1.75rem 2rem;
     margin-bottom: 1.5rem;
     position: relative;
     overflow: hidden;
@@ -76,34 +119,24 @@ html, body, [class*="css"], .stApp {
     align-items: center;
     justify-content: space-between;
 }
-.hero-block::after {
-    content: '';
-    position: absolute;
-    bottom: -30px; left: -30px;
-    width: 180px; height: 180px;
-    background: rgba(68,205,148,0.08);
-    border-radius: 50%;
-}
-.hero-left {}
 .hero-title {
     font-family: var(--font);
     font-size: 1.75rem;
     font-weight: 700;
-    color: rgb(68,205,148);
+    color: rgb(68,205,148) !important;
     margin: 0 0 0.2rem 0;
 }
 .hero-sub {
     font-family: var(--font);
     font-size: 0.72rem;
-    color: rgba(255,255,255,0.55);
+    color: rgba(255,255,255,0.6) !important;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
+/* Logo no hero: cores originais (sem filter) */
 .hero-logo {
-    height: 36px;
-    opacity: 0.92;
+    height: 38px;
     flex-shrink: 0;
-    filter: brightness(0) invert(1);
 }
 
 /* ── Section titles ── */
@@ -111,7 +144,7 @@ html, body, [class*="css"], .stApp {
     font-family: var(--font);
     font-size: 0.78rem;
     font-weight: 700;
-    color: var(--zk-blue);
+    color: var(--zk-blue) !important;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     margin-bottom: 0.85rem;
@@ -129,17 +162,17 @@ html, body, [class*="css"], .stApp {
     font-size: 0.72rem;
     font-weight: 600;
 }
-.badge-conforme { background: rgba(26,184,122,0.12); color: #0e8a58;  border: 1px solid rgba(26,184,122,0.35); }
-.badge-nao      { background: rgba(224,60,60,0.10);  color: #b52929;  border: 1px solid rgba(224,60,60,0.35); }
-.badge-indet    { background: rgba(232,146,10,0.12); color: #a05e00;  border: 1px solid rgba(232,146,10,0.35); }
-.badge-na       { background: rgba(77,83,99,0.08);   color: var(--muted); border: 1px solid rgba(77,83,99,0.2); }
+.badge-conforme { background: rgba(26,184,122,0.12); color: #0a7a4e !important; border: 1px solid rgba(26,184,122,0.35); }
+.badge-nao      { background: rgba(224,60,60,0.10);  color: #9b1c1c !important; border: 1px solid rgba(224,60,60,0.35); }
+.badge-indet    { background: rgba(232,146,10,0.12); color: #7a4500 !important; border: 1px solid rgba(232,146,10,0.35); }
+.badge-na       { background: rgba(77,83,99,0.08);   color: #4d5363 !important; border: 1px solid rgba(77,83,99,0.2); }
 
 /* ── Result table ── */
 .result-table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
 .result-table th {
     font-family: var(--font);
     font-size: 0.67rem;
-    color: #ffffff;
+    color: #ffffff !important;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     border-bottom: 2px solid var(--zk-blue);
@@ -151,7 +184,7 @@ html, body, [class*="css"], .stApp {
     padding: 9px 12px;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
-    color: var(--text);
+    color: var(--text) !important;
 }
 .result-table tr:hover td { background: rgba(68,205,148,0.05); }
 
@@ -163,7 +196,7 @@ html, body, [class*="css"], .stApp {
     border: 1px solid #c5cad8;
     border-radius: 4px;
     padding: 2px 6px;
-    color: var(--zk-blue);
+    color: var(--zk-blue) !important;
     display: inline-block;
 }
 
@@ -179,27 +212,15 @@ html, body, [class*="css"], .stApp {
     padding: 1rem;
     text-align: center;
 }
-.metric-num {
-    font-family: var(--font);
-    font-size: 2rem;
-    font-weight: 700;
-    line-height: 1;
-    margin-bottom: 0.2rem;
-}
-.metric-label {
-    font-family: var(--font);
-    font-size: 0.62rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-.c-green { color: var(--success); }
-.c-red   { color: var(--danger);  }
-.c-amber { color: var(--warn);    }
-.c-blue  { color: var(--zk-blue); }
-.c-muted { color: var(--muted);   }
+.metric-num { font-family: var(--font); font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 0.2rem; }
+.metric-label { font-family: var(--font); font-size: 0.62rem; color: var(--muted) !important; text-transform: uppercase; letter-spacing: 0.08em; }
+.c-green { color: var(--success) !important; }
+.c-red   { color: var(--danger)  !important; }
+.c-amber { color: var(--warn)    !important; }
+.c-blue  { color: var(--zk-blue) !important; }
+.c-muted { color: var(--muted)   !important; }
 
-/* ── Terminal / log ── */
+/* ── Terminal log: fundo slate, texto verde Zigurat ── */
 .terminal {
     background: rgb(77,83,99);
     border: 1px solid #3a3f4f;
@@ -207,13 +228,13 @@ html, body, [class*="css"], .stApp {
     padding: 1rem 1.25rem;
     font-family: var(--mono);
     font-size: 0.74rem;
-    color: rgb(68,205,148);
+    color: rgb(68,205,148) !important;
     max-height: 280px;
     overflow-y: auto;
     line-height: 1.7;
 }
 
-/* ── Form inputs ── */
+/* ── Inputs no main content ── */
 .stTextInput input, .stTextArea textarea {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
@@ -227,6 +248,14 @@ html, body, [class*="css"], .stApp {
     box-shadow: 0 0 0 2px rgba(68,205,148,0.2) !important;
 }
 
+/* Selectbox no main content */
+[data-testid="stMain"] [data-baseweb="select"] > div {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+}
+[data-testid="stMain"] [data-baseweb="select"] span { color: var(--text) !important; }
+
 /* ── File uploader ── */
 [data-testid="stFileUploader"] {
     background: var(--surface) !important;
@@ -234,11 +263,12 @@ html, body, [class*="css"], .stApp {
     border-radius: 8px !important;
 }
 [data-testid="stFileUploader"]:hover { border-color: var(--zk-green) !important; }
+[data-testid="stFileUploader"] span, [data-testid="stFileUploader"] p { color: var(--text) !important; }
 
-/* ── Buttons ── */
+/* ── Botão principal ── */
 .stButton button {
     background: var(--zk-green) !important;
-    color: rgb(77,83,99) !important;
+    color: rgb(30,35,45) !important;
     font-family: var(--font) !important;
     font-weight: 700 !important;
     font-size: 0.85rem !important;
@@ -249,7 +279,7 @@ html, body, [class*="css"], .stApp {
 }
 .stButton button:hover {
     background: rgb(28,96,241) !important;
-    color: #fff !important;
+    color: #ffffff !important;
     transform: translateY(-1px);
     box-shadow: 0 4px 16px rgba(28,96,241,0.25) !important;
 }
@@ -269,7 +299,7 @@ html, body, [class*="css"], .stApp {
 }
 [data-testid="stDownloadButton"] button:hover {
     background: var(--zk-blue) !important;
-    color: #fff !important;
+    color: #ffffff !important;
 }
 
 /* ── Expander ── */
@@ -300,7 +330,7 @@ html, body, [class*="css"], .stApp {
     border-radius: 0 6px 6px 0;
     padding: 0.75rem 1rem;
     font-size: 0.82rem;
-    color: #1a47a8;
+    color: #1a3fa8 !important;
     margin: 0.75rem 0;
 }
 .warn-box {
@@ -309,20 +339,20 @@ html, body, [class*="css"], .stApp {
     border-radius: 0 6px 6px 0;
     padding: 0.75rem 1rem;
     font-size: 0.82rem;
-    color: #7a4500;
+    color: #7a4500 !important;
     margin: 0.75rem 0;
 }
 
 /* ── Divider ── */
 hr { border-color: var(--border) !important; }
 
-/* ── Pulse animation ── */
+/* ── Pulse ── */
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(68,205,148,0.4); } 50% { box-shadow: 0 0 0 8px rgba(68,205,148,0); } }
 
-/* ── Slider track ── */
+/* ── Slider ── */
 .stSlider [data-baseweb="slider"] { background: var(--border) !important; }
 
-/* ── Hide Streamlit chrome ── */
+/* ── Ocultar chrome do Streamlit ── */
 #MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
@@ -526,8 +556,9 @@ def read_xlsx_items(xlsx_bytes: bytes) -> list[dict]:
 
 def build_audit_prompt(elementos: dict, norma_items: list, modelo_nome: str) -> str:
     """Build the LLM prompt for NBR 9050 audit."""
-    elementos_json = json.dumps(elementos, ensure_ascii=False, default=str)[:60000]
-    norma_json = json.dumps(norma_items, ensure_ascii=False)[:8000] if norma_items else "Usar os 12 itens padrão da NBR 9050:2020"
+    # Limita o JSON de elementos a 28k chars (~7k tokens) para deixar espaço à resposta
+    elementos_json = json.dumps(elementos, ensure_ascii=False, default=str)[:28000]
+    norma_json = json.dumps(norma_items, ensure_ascii=False)[:6000] if norma_items else "Usar os 12 itens padrão da NBR 9050:2020"
 
     return f"""Você é um especialista em acessibilidade arquitetônica e norma ABNT NBR 9050:2020.
 
@@ -585,19 +616,75 @@ Responda SOMENTE com JSON válido, sem markdown, sem texto extra:
 """
 
 
+def _parse_json_robusto(raw: str) -> dict:
+    """Tenta parsear JSON, com fallback para JSON truncado."""
+    raw_clean = re.sub(r"```json|```", "", raw).strip()
+    # Tentativa 1 — JSON completo
+    try:
+        return json.loads(raw_clean)
+    except json.JSONDecodeError:
+        pass
+    # Tentativa 2 — extrair bloco { ... } mais externo
+    try:
+        start = raw_clean.index("{")
+        # Fecha o JSON truncado adicionando estrutura mínima
+        partial = raw_clean[start:]
+        # Conta chaves abertas para tentar fechar
+        depth = 0
+        last_valid = 0
+        for i, c in enumerate(partial):
+            if c == "{": depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    last_valid = i + 1
+                    break
+        if last_valid:
+            return json.loads(partial[:last_valid])
+    except Exception:
+        pass
+    # Tentativa 3 — extrair resultados parciais com regex e montar estrutura
+    try:
+        resultados = []
+        pattern = r'\{[^{}]*"item_nbr"[^{}]*\}'
+        for m in re.finditer(pattern, raw_clean, re.DOTALL):
+            try:
+                resultados.append(json.loads(m.group()))
+            except Exception:
+                pass
+        if resultados:
+            return {
+                "modelo": "Extração parcial — resposta truncada",
+                "schema_ifc": "—",
+                "data_auditoria": datetime.now().strftime("%d/%m/%Y"),
+                "resultados": resultados,
+                "resumo": {
+                    "total": len(resultados),
+                    "conformes": sum(1 for r in resultados if "conforme" in r.get("status","").lower() and "não" not in r.get("status","").lower()),
+                    "nao_conformes": sum(1 for r in resultados if "não" in r.get("status","").lower() or "nao" in r.get("status","").lower()),
+                    "indeterminados": sum(1 for r in resultados if "indet" in r.get("status","").lower()),
+                    "na": sum(1 for r in resultados if r.get("status","").lower() == "n/a"),
+                    "percentual_conformidade": "parcial"
+                },
+                "observacoes_gerais": "⚠️ Resposta truncada pelo limite de tokens — resultados parciais exibidos."
+            }
+    except Exception:
+        pass
+    raise json.JSONDecodeError("Não foi possível parsear a resposta do modelo.", raw_clean, 0)
+
+
 def call_anthropic(api_key: str, model: str, prompt: str, temperature: float) -> dict:
     """Call Anthropic API and return parsed JSON result."""
     import anthropic
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=8192,
         temperature=temperature,
         messages=[{"role": "user", "content": prompt}]
     )
     raw = msg.content[0].text
-    raw_clean = re.sub(r"```json|```", "", raw).strip()
-    return json.loads(raw_clean)
+    return _parse_json_robusto(raw)
 
 
 def call_gemini(api_key: str, model: str, prompt: str, temperature: float) -> dict:
@@ -607,11 +694,9 @@ def call_gemini(api_key: str, model: str, prompt: str, temperature: float) -> di
     m = genai.GenerativeModel(model)
     resp = m.generate_content(
         prompt,
-        generation_config={"temperature": temperature, "max_output_tokens": 4096}
+        generation_config={"temperature": temperature, "max_output_tokens": 8192}
     )
-    raw = resp.text
-    raw_clean = re.sub(r"```json|```", "", raw).strip()
-    return json.loads(raw_clean)
+    return _parse_json_robusto(resp.text)
 
 
 def status_badge(status: str) -> str:
@@ -852,9 +937,9 @@ with st.sidebar:
     st.markdown("""
     <div style="padding:1rem 0 1.5rem 0;border-bottom:1px solid rgba(255,255,255,0.12);margin-bottom:1rem">
       <img src="https://www.e-zigurat.com/images/logo.svg"
-           style="height:28px;filter:brightness(0) invert(1);margin-bottom:0.75rem;display:block" />
+           style="height:28px;margin-bottom:0.75rem;display:block" />
       <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:1rem;font-weight:700;color:rgb(68,205,148)">
-        &#9851; NBR 9050 Auditor
+        &#9855; NBR 9050 Auditor
       </div>
       <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.65rem;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.1em">
         BIM Accessibility Checker
@@ -926,7 +1011,7 @@ with st.sidebar:
 st.markdown("""
 <div class="hero-block">
   <div class="hero-left">
-    <div class="hero-title">&#9851; Auditor de Acessibilidade BIM</div>
+    <div class="hero-title">&#9855; Auditor de Acessibilidade BIM</div>
     <div class="hero-sub">Verificação Automatizada de Conformidade &nbsp;·&nbsp; ABNT NBR 9050:2020 &nbsp;·&nbsp; Powered by IA</div>
   </div>
   <img src="https://www.e-zigurat.com/images/logo.svg" class="hero-logo" alt="Zigurat Institute of Technology" />
