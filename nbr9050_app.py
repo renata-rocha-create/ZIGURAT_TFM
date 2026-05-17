@@ -25,164 +25,170 @@ st.set_page_config(
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500&display=swap');
 
 :root {
-    --bg: #0a0e1a;
-    --surface: #111827;
-    --surface2: #1a2236;
-    --border: #1f2d45;
-    --accent: #00d4aa;
-    --accent2: #3b82f6;
-    --warn: #f59e0b;
-    --danger: #ef4444;
-    --success: #10b981;
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --mono: 'DM Mono', monospace;
-    --sans: 'Syne', sans-serif;
-    --body: 'Inter', sans-serif;
+    /* ── Zigurat brand palette ── */
+    --zk-slate:   rgb(77,83,99);       /* #4D5363 — texto principal, sidebar */
+    --zk-green:   rgb(68,205,148);     /* #44CD94 — accent primário */
+    --zk-blue:    rgb(28,96,241);      /* #1C60F1 — accent secundário / links */
+
+    --bg:         #ffffff;
+    --surface:    #f4f6f9;
+    --surface2:   #eaecf1;
+    --border:     #d1d5de;
+    --text:       rgb(77,83,99);
+    --muted:      #8e95a6;
+    --success:    #1ab87a;
+    --danger:     #e03c3c;
+    --warn:       #e8920a;
+
+    --font: 'Trebuchet MS', Trebuchet, Arial, sans-serif;
+    --mono: 'Courier New', Courier, monospace;
 }
 
-/* Global */
-html, body, [class*="css"] {
-    font-family: var(--body) !important;
+/* ── Global reset to white + Trebuchet ── */
+html, body, [class*="css"], .stApp {
+    font-family: var(--font) !important;
     background-color: var(--bg) !important;
     color: var(--text) !important;
 }
-
 .stApp { background-color: var(--bg) !important; }
 
-/* Sidebar */
+/* ── Sidebar — slate escuro ── */
 [data-testid="stSidebar"] {
-    background: var(--surface) !important;
-    border-right: 1px solid var(--border) !important;
+    background: var(--zk-slate) !important;
+    border-right: 1px solid #3a3f4f !important;
 }
-[data-testid="stSidebar"] * { color: var(--text) !important; }
+[data-testid="stSidebar"] * { color: #ffffff !important; font-family: var(--font) !important; }
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stSlider label { color: #c8ccd6 !important; font-size: 0.78rem !important; }
 
-/* Header hero */
+/* ── Hero banner ── */
 .hero-block {
-    background: linear-gradient(135deg, #0f1f3d 0%, #0a2a20 100%);
-    border: 1px solid var(--accent);
-    border-radius: 12px;
-    padding: 2rem 2.5rem;
+    background: linear-gradient(120deg, rgb(77,83,99) 0%, rgb(50,56,72) 100%);
+    border-radius: 10px;
+    padding: 1.75rem 2rem 1.75rem 2rem;
     margin-bottom: 1.5rem;
     position: relative;
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
-.hero-block::before {
+.hero-block::after {
     content: '';
     position: absolute;
-    top: -40px; right: -40px;
-    width: 160px; height: 160px;
-    background: radial-gradient(circle, rgba(0,212,170,0.12) 0%, transparent 70%);
+    bottom: -30px; left: -30px;
+    width: 180px; height: 180px;
+    background: rgba(68,205,148,0.08);
     border-radius: 50%;
 }
+.hero-left {}
 .hero-title {
-    font-family: var(--sans);
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--accent);
-    margin: 0 0 0.25rem 0;
-    letter-spacing: -0.5px;
+    font-family: var(--font);
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: rgb(68,205,148);
+    margin: 0 0 0.2rem 0;
 }
 .hero-sub {
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    color: var(--muted);
+    font-family: var(--font);
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.55);
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
-
-/* Section cards */
-.section-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
+.hero-logo {
+    height: 36px;
+    opacity: 0.92;
+    flex-shrink: 0;
+    filter: brightness(0) invert(1);
 }
+
+/* ── Section titles ── */
 .section-title {
-    font-family: var(--sans);
-    font-size: 0.85rem;
+    font-family: var(--font);
+    font-size: 0.78rem;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--zk-blue);
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    margin-bottom: 1rem;
+    margin-bottom: 0.85rem;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
 }
 
-/* Status badges */
+/* ── Status badges ── */
 .badge {
     display: inline-block;
     padding: 2px 10px;
     border-radius: 20px;
-    font-family: var(--mono);
+    font-family: var(--font);
     font-size: 0.72rem;
-    font-weight: 500;
+    font-weight: 600;
 }
-.badge-conforme  { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
-.badge-nao       { background: rgba(239,68,68,0.15);  color: var(--danger);  border: 1px solid rgba(239,68,68,0.3); }
-.badge-indet     { background: rgba(245,158,11,0.15); color: var(--warn);    border: 1px solid rgba(245,158,11,0.3); }
-.badge-na        { background: rgba(100,116,139,0.15); color: var(--muted);  border: 1px solid rgba(100,116,139,0.3); }
+.badge-conforme { background: rgba(26,184,122,0.12); color: #0e8a58;  border: 1px solid rgba(26,184,122,0.35); }
+.badge-nao      { background: rgba(224,60,60,0.10);  color: #b52929;  border: 1px solid rgba(224,60,60,0.35); }
+.badge-indet    { background: rgba(232,146,10,0.12); color: #a05e00;  border: 1px solid rgba(232,146,10,0.35); }
+.badge-na       { background: rgba(77,83,99,0.08);   color: var(--muted); border: 1px solid rgba(77,83,99,0.2); }
 
-/* Result table */
-.result-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+/* ── Result table ── */
+.result-table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
 .result-table th {
-    font-family: var(--mono);
-    font-size: 0.68rem;
-    color: var(--muted);
+    font-family: var(--font);
+    font-size: 0.67rem;
+    color: #ffffff;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    border-bottom: 1px solid var(--border);
-    padding: 8px 12px;
+    letter-spacing: 0.08em;
+    border-bottom: 2px solid var(--zk-blue);
+    padding: 9px 12px;
     text-align: left;
-    background: var(--surface2);
+    background: var(--zk-slate);
 }
 .result-table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(31,45,69,0.5);
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
     vertical-align: top;
+    color: var(--text);
 }
-.result-table tr:hover td { background: rgba(0,212,170,0.03); }
+.result-table tr:hover td { background: rgba(68,205,148,0.05); }
 
-/* GlobalId chip */
+/* ── GlobalId chip ── */
 .globalid {
     font-family: var(--mono);
-    font-size: 0.68rem;
-    background: var(--surface2);
-    border: 1px solid var(--border);
+    font-size: 0.67rem;
+    background: #eef1f8;
+    border: 1px solid #c5cad8;
     border-radius: 4px;
     padding: 2px 6px;
-    color: var(--accent2);
-    cursor: pointer;
+    color: var(--zk-blue);
     display: inline-block;
 }
 
-/* Metric cards */
-.metric-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+/* ── Metric cards ── */
+.metric-row { display: flex; gap: 0.85rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 .metric-card {
     flex: 1;
-    min-width: 120px;
+    min-width: 110px;
     background: var(--surface);
     border: 1px solid var(--border);
+    border-top: 3px solid var(--zk-green);
     border-radius: 8px;
     padding: 1rem;
     text-align: center;
 }
 .metric-num {
-    font-family: var(--sans);
+    font-family: var(--font);
     font-size: 2rem;
-    font-weight: 800;
+    font-weight: 700;
     line-height: 1;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.2rem;
 }
 .metric-label {
-    font-family: var(--mono);
-    font-size: 0.65rem;
+    font-family: var(--font);
+    font-size: 0.62rem;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -190,50 +196,50 @@ html, body, [class*="css"] {
 .c-green { color: var(--success); }
 .c-red   { color: var(--danger);  }
 .c-amber { color: var(--warn);    }
-.c-blue  { color: var(--accent2); }
+.c-blue  { color: var(--zk-blue); }
 .c-muted { color: var(--muted);   }
 
-/* Log / progress terminal */
+/* ── Terminal / log ── */
 .terminal {
-    background: #050a14;
-    border: 1px solid var(--border);
+    background: rgb(77,83,99);
+    border: 1px solid #3a3f4f;
     border-radius: 8px;
     padding: 1rem 1.25rem;
     font-family: var(--mono);
-    font-size: 0.75rem;
-    color: #7dd3fc;
+    font-size: 0.74rem;
+    color: rgb(68,205,148);
     max-height: 280px;
     overflow-y: auto;
     line-height: 1.7;
 }
 
-/* Inputs */
-.stTextInput input, .stSelectbox select, .stTextArea textarea {
-    background: var(--surface2) !important;
+/* ── Form inputs ── */
+.stTextInput input, .stTextArea textarea {
+    background: var(--surface) !important;
     border: 1px solid var(--border) !important;
     color: var(--text) !important;
     border-radius: 6px !important;
-    font-family: var(--mono) !important;
+    font-family: var(--font) !important;
     font-size: 0.82rem !important;
 }
 .stTextInput input:focus, .stTextArea textarea:focus {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px rgba(0,212,170,0.15) !important;
+    border-color: var(--zk-green) !important;
+    box-shadow: 0 0 0 2px rgba(68,205,148,0.2) !important;
 }
 
-/* File uploader */
+/* ── File uploader ── */
 [data-testid="stFileUploader"] {
-    background: var(--surface2) !important;
-    border: 1px dashed var(--border) !important;
+    background: var(--surface) !important;
+    border: 1.5px dashed var(--border) !important;
     border-radius: 8px !important;
 }
-[data-testid="stFileUploader"]:hover { border-color: var(--accent) !important; }
+[data-testid="stFileUploader"]:hover { border-color: var(--zk-green) !important; }
 
-/* Buttons */
+/* ── Buttons ── */
 .stButton button {
-    background: var(--accent) !important;
-    color: #0a0e1a !important;
-    font-family: var(--sans) !important;
+    background: var(--zk-green) !important;
+    color: rgb(77,83,99) !important;
+    font-family: var(--font) !important;
     font-weight: 700 !important;
     font-size: 0.85rem !important;
     border: none !important;
@@ -242,9 +248,10 @@ html, body, [class*="css"] {
     transition: all 0.2s !important;
 }
 .stButton button:hover {
-    background: #00f0c0 !important;
+    background: rgb(28,96,241) !important;
+    color: #fff !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(0,212,170,0.3) !important;
+    box-shadow: 0 4px 16px rgba(28,96,241,0.25) !important;
 }
 .stButton button:disabled {
     background: var(--border) !important;
@@ -252,58 +259,70 @@ html, body, [class*="css"] {
     transform: none !important;
 }
 
-/* Expander */
+/* ── Download buttons ── */
+[data-testid="stDownloadButton"] button {
+    background: var(--surface) !important;
+    color: var(--zk-blue) !important;
+    border: 1.5px solid var(--zk-blue) !important;
+    font-family: var(--font) !important;
+    font-weight: 600 !important;
+}
+[data-testid="stDownloadButton"] button:hover {
+    background: var(--zk-blue) !important;
+    color: #fff !important;
+}
+
+/* ── Expander ── */
 .streamlit-expanderHeader {
-    background: var(--surface2) !important;
+    background: var(--surface) !important;
     border: 1px solid var(--border) !important;
     border-radius: 6px !important;
-    font-family: var(--mono) !important;
-    font-size: 0.8rem !important;
+    font-family: var(--font) !important;
+    font-size: 0.82rem !important;
+    color: var(--text) !important;
 }
 
-/* Step indicator */
-.step-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
-.step-dot {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    font-weight: 600;
-    flex-shrink: 0;
+/* ── Tabs ── */
+[data-testid="stTabs"] [role="tab"] {
+    font-family: var(--font) !important;
+    font-size: 0.82rem !important;
+    color: var(--muted) !important;
 }
-.step-dot.done    { background: var(--success); color: #000; }
-.step-dot.active  { background: var(--accent);  color: #000; animation: pulse 1.5s infinite; }
-.step-dot.pending { background: var(--border);  color: var(--muted); }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,212,170,0.4); } 50% { box-shadow: 0 0 0 8px rgba(0,212,170,0); } }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+    color: var(--zk-blue) !important;
+    border-bottom-color: var(--zk-blue) !important;
+}
 
-/* Divider */
-hr { border-color: var(--border) !important; }
-
-/* Info / warning boxes */
+/* ── Info / warning boxes ── */
 .info-box {
-    background: rgba(59,130,246,0.08);
-    border-left: 3px solid var(--accent2);
+    background: rgba(28,96,241,0.06);
+    border-left: 3px solid var(--zk-blue);
     border-radius: 0 6px 6px 0;
     padding: 0.75rem 1rem;
     font-size: 0.82rem;
-    color: #93c5fd;
+    color: #1a47a8;
     margin: 0.75rem 0;
 }
 .warn-box {
-    background: rgba(245,158,11,0.08);
+    background: rgba(232,146,10,0.08);
     border-left: 3px solid var(--warn);
     border-radius: 0 6px 6px 0;
     padding: 0.75rem 1rem;
     font-size: 0.82rem;
-    color: #fcd34d;
+    color: #7a4500;
     margin: 0.75rem 0;
 }
 
-/* Slider */
+/* ── Divider ── */
+hr { border-color: var(--border) !important; }
+
+/* ── Pulse animation ── */
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(68,205,148,0.4); } 50% { box-shadow: 0 0 0 8px rgba(68,205,148,0); } }
+
+/* ── Slider track ── */
 .stSlider [data-baseweb="slider"] { background: var(--border) !important; }
 
-/* Hide Streamlit branding */
+/* ── Hide Streamlit chrome ── */
 #MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
@@ -831,11 +850,13 @@ for k, v in {
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("""
-    <div style="padding:1rem 0 1.5rem 0">
-      <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;color:#00d4aa">
-        ♿ NBR 9050 Auditor
+    <div style="padding:1rem 0 1.5rem 0;border-bottom:1px solid rgba(255,255,255,0.12);margin-bottom:1rem">
+      <img src="https://www.e-zigurat.com/images/logo.svg"
+           style="height:28px;filter:brightness(0) invert(1);margin-bottom:0.75rem;display:block" />
+      <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:1rem;font-weight:700;color:rgb(68,205,148)">
+        &#9851; NBR 9050 Auditor
       </div>
-      <div style="font-family:'DM Mono',monospace;font-size:0.65rem;color:#64748b;text-transform:uppercase;letter-spacing:0.1em">
+      <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.65rem;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.1em">
         BIM Accessibility Checker
       </div>
     </div>
@@ -854,14 +875,14 @@ with st.sidebar:
     st.markdown("**🤖 Modelo**")
     if "Anthropic" in provider:
         model_options = [
-            "claude-haiku-4-5-20251001",
-            "claude-sonnet-4-5-20251022",
-            "claude-opus-4-5-20251101",
+            "claude-haiku-4-5",
+            "claude-sonnet-4-5",
+            "claude-opus-4-5",
         ]
         model_labels = {
-            "claude-haiku-4-5-20251001": "Claude Haiku 4.5 (rápido, econômico)",
-            "claude-sonnet-4-5-20251022": "Claude Sonnet 4.5 (balanceado)",
-            "claude-opus-4-5-20251101": "Claude Opus 4.5 (máxima qualidade)",
+            "claude-haiku-4-5":  "Claude Haiku 4.5 (rápido, econômico)",
+            "claude-sonnet-4-5": "Claude Sonnet 4.5 (balanceado)",
+            "claude-opus-4-5":   "Claude Opus 4.5 (máxima qualidade)",
         }
     else:
         model_options = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
@@ -892,9 +913,9 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("""
-    <div style="font-family:'DM Mono',monospace;font-size:0.65rem;color:#334155;text-align:center;padding-top:0.5rem">
+    <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.65rem;color:rgba(255,255,255,0.35);text-align:center;padding-top:0.5rem">
     Zigurat Institute of Technology<br>
-    Master IA para AEC · 2025
+    Master IA para AEC &middot; 2025
     </div>
     """, unsafe_allow_html=True)
 
@@ -904,8 +925,11 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <div class="hero-block">
-  <div class="hero-title">♿ Auditor de Acessibilidade BIM</div>
-  <div class="hero-sub">Verificação Automatizada de Conformidade · ABNT NBR 9050:2020 · Powered by IA</div>
+  <div class="hero-left">
+    <div class="hero-title">&#9851; Auditor de Acessibilidade BIM</div>
+    <div class="hero-sub">Verificação Automatizada de Conformidade &nbsp;·&nbsp; ABNT NBR 9050:2020 &nbsp;·&nbsp; Powered by IA</div>
+  </div>
+  <img src="https://www.e-zigurat.com/images/logo.svg" class="hero-logo" alt="Zigurat Institute of Technology" />
 </div>
 """, unsafe_allow_html=True)
 
@@ -928,7 +952,7 @@ with tab_upload:
             st.markdown(f"""
             <div class="info-box">
             ✅ <strong>{ifc_file.name}</strong><br>
-            <span style="font-family:'DM Mono',monospace;font-size:0.72rem">
+            <span style="font-family:'Courier New',monospace;font-size:0.72rem">
             Tamanho: {ifc_file.size / 1024 / 1024:.1f} MB
             </span>
             </div>""", unsafe_allow_html=True)
@@ -1296,3 +1320,4 @@ with tab_ajuda:
     Verificação manual complementar é sempre recomendada.
     </div>
     """, unsafe_allow_html=True)
+
