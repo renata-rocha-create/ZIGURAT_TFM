@@ -378,6 +378,10 @@ hr { border-color: var(--border) !important; }
 
 /* ── Ocultar chrome do Streamlit ── */
 #MainMenu, footer, header { visibility: hidden; }
+
+/* ── Manter sidebar sempre visível ── */
+[data-testid="collapsedControl"] { display: none !important; }
+section[data-testid="stSidebar"] { min-width: 240px !important; transform: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -805,7 +809,15 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
     text-transform: uppercase;
     letter-spacing: 0.12em;
   }}
-  .header img {{ height: 36px; }}
+  .header-logo {{
+    background: #ffffff;
+    border-radius: 7px;
+    padding: 5px 12px;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }}
+  .header-logo img {{ height: 32px; display: block; }}
 
   /* ── Body content ── */
   .content {{ padding: 2rem 2.5rem; }}
@@ -904,7 +916,14 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
   }}
   .footer-left strong {{ color: rgb(68,205,148); display: block; margin-bottom: 0.2rem; font-size: 0.72rem; }}
   .footer-left .autores {{ color: rgba(255,255,255,0.7); }}
-  .footer img {{ height: 24px; opacity: 0.85; }}
+  .footer-logo {{
+    background: #ffffff;
+    border-radius: 7px;
+    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+  }}
+  .footer-logo img {{ height: 20px; display: block; }}
   .footer-right {{
     font-family: 'Courier New', monospace;
     font-size: 0.65rem;
@@ -921,7 +940,10 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
     <h1>&#9855; Relatório de Verificação de Acessibilidade BIM</h1>
     <div class="sub">Verificação Automatizada de Conformidade &nbsp;·&nbsp; ABNT NBR 9050:2020</div>
   </div>
-  <img src="https://www.e-zigurat.com/images/logo.svg" alt="Zigurat Institute of Technology" />
+  <div class="header-logo">
+    <img src="https://www.e-zigurat.com/images/logo.svg" alt="Zigurat Institute of Technology" />
+  </div>
+</div>
 </div>
 
 <!-- ── Content ── -->
@@ -981,7 +1003,9 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
     </span>
   </div>
   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.5rem">
-    <img src="https://www.e-zigurat.com/images/logo.svg" alt="Zigurat" />
+    <div class="footer-logo">
+      <img src="https://www.e-zigurat.com/images/logo.svg" alt="Zigurat" />
+    </div>
     <div class="footer-right">Master IA para AEC &nbsp;·&nbsp; {now}</div>
   </div>
 </div>
@@ -1123,8 +1147,10 @@ for k, v in {
 with st.sidebar:
     st.markdown("""
     <div style="padding:1rem 0 1.5rem 0;border-bottom:1px solid rgba(255,255,255,0.12);margin-bottom:1rem">
-      <img src="https://www.e-zigurat.com/images/logo.svg"
-           style="height:28px;margin-bottom:0.75rem;display:block" />
+      <div style="background:#ffffff;border-radius:7px;padding:5px 12px;display:inline-flex;align-items:center;margin-bottom:0.75rem">
+        <img src="https://www.e-zigurat.com/images/logo.svg"
+             style="height:24px;display:block" alt="Zigurat" />
+      </div>
       <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:1rem;font-weight:700;color:rgb(68,205,148)">
         &#9855; NBR 9050 Auditor
       </div>
@@ -1206,7 +1232,11 @@ st.markdown("""
     <div class="hero-title">&#9855; Auditor de Acessibilidade BIM</div>
     <div class="hero-sub">Verificação Automatizada de Conformidade &nbsp;·&nbsp; ABNT NBR 9050:2020 &nbsp;·&nbsp; Powered by IA</div>
   </div>
-  <img src="https://www.e-zigurat.com/images/logo.svg" class="hero-logo" alt="Zigurat Institute of Technology" />
+  <div style="background:#ffffff;border-radius:8px;padding:6px 14px;display:flex;align-items:center;flex-shrink:0">
+    <img src="https://www.e-zigurat.com/images/logo.svg"
+         style="height:32px;display:block"
+         alt="Zigurat Institute of Technology" />
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1619,8 +1649,10 @@ st.markdown("""
       William Felipe dos Santos Moura
     </div>
   </div>
-  <img src="https://www.e-zigurat.com/images/logo.svg"
-       style="height:22px;opacity:0.85"
-       alt="Zigurat Institute of Technology" />
+  <div style="background:#ffffff;border-radius:7px;padding:5px 12px;display:inline-flex;align-items:center">
+    <img src="https://www.e-zigurat.com/images/logo.svg"
+         style="height:22px;display:block"
+         alt="Zigurat Institute of Technology" />
+  </div>
 </div>
 """, unsafe_allow_html=True)
