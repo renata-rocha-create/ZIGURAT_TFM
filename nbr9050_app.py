@@ -711,28 +711,40 @@ def status_badge(status: str) -> str:
         return '<span class="badge badge-na">— N/A</span>'
 
 
+AUTORES = "Kevin Dias Quintian &nbsp;·&nbsp; Renata Gomes Rocha &nbsp;·&nbsp; Sergio Rosenboim &nbsp;·&nbsp; Viviane Nishizaki Suzuke &nbsp;·&nbsp; William Felipe dos Santos Moura"
+RODAPE_TXT = "Kevin Dias Quintian · Renata Gomes Rocha · Sergio Rosenboim · Viviane Nishizaki Suzuke · William Felipe dos Santos Moura"
+
 def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
-    """Generate a self-contained HTML report."""
+    """Generate a self-contained HTML report — Zigurat brand."""
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
     resumo = resultado.get("resumo", {})
-    itens = resultado.get("resultados", [])
+    itens  = resultado.get("resultados", [])
+
+    # status color map
+    def st_color(s):
+        sl = s.lower()
+        if "conforme" in sl and "não" not in sl and "nao" not in sl: return "#1ab87a"
+        if "não" in sl or "nao" in sl: return "#e03c3c"
+        if "indet" in sl: return "#e8920a"
+        return "#6b7280"
 
     rows = ""
     for it in itens:
-        gid = it.get("globalid", "—")
-        st  = it.get("status", "N/A")
-        badge_color = {"conforme": "#10b981", "não conforme": "#ef4444", "indeterminado": "#f59e0b"}.get(st.lower(), "#64748b")
+        gid = it.get("globalid","") or ""
+        gid_cell = f'<code style="font-family:\'Courier New\',monospace;font-size:0.73em;background:#eef1f8;border:1px solid #c5cad8;border-radius:4px;padding:2px 7px;color:rgb(28,96,241);letter-spacing:0.02em">{gid}</code>' if gid and gid != "—" else '<span style="color:#aab0be;font-size:0.8em">—</span>'
+        st = it.get("status","N/A")
+        rec = it.get("recomendacao","") or ""
         rows += f"""
         <tr>
-          <td><code>{it.get('item_nbr','—')}</code></td>
-          <td>{it.get('categoria','—')}</td>
-          <td>{it.get('elemento','—')}</td>
-          <td style="color:{badge_color};font-weight:600">{st}</td>
-          <td>{it.get('valor_encontrado','—')}</td>
-          <td>{it.get('valor_exigido','—')}</td>
-          <td><code style="color:#3b82f6;font-size:0.75em">{gid}</code></td>
-          <td style="color:#94a3b8;font-size:0.85em">{it.get('tipo_ifc','—')}</td>
-          <td style="color:#f87171;font-size:0.85em">{it.get('recomendacao','—')}</td>
+          <td><code style="background:#f0f3fb;border-radius:4px;padding:2px 6px;font-size:0.8em;color:rgb(28,96,241)">{it.get('item_nbr','—')}</code></td>
+          <td style="color:#3d4252">{it.get('categoria','—')}</td>
+          <td style="color:#1a1d26;max-width:200px">{it.get('elemento','—')}</td>
+          <td style="color:{st_color(st)};font-weight:700;white-space:nowrap">{st}</td>
+          <td style="color:#3d4252;font-family:'Courier New',monospace;font-size:0.8em">{it.get('valor_encontrado','—')}</td>
+          <td style="color:#3d4252;font-family:'Courier New',monospace;font-size:0.8em">{it.get('valor_exigido','—')}</td>
+          <td style="white-space:nowrap">{gid_cell}</td>
+          <td style="color:#6b7280;font-size:0.82em">{it.get('tipo_ifc','—')}</td>
+          <td style="color:#b52929;font-size:0.82em">{rec}</td>
         </tr>"""
 
     return f"""<!DOCTYPE html>
@@ -741,64 +753,215 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
 <meta charset="UTF-8">
 <title>Relatório NBR 9050 — {modelo_nome}</title>
 <style>
-  body {{ font-family: 'Segoe UI', sans-serif; background: #0a0e1a; color: #e2e8f0; margin: 0; padding: 2rem; }}
-  h1 {{ color: #00d4aa; font-size: 1.6rem; border-bottom: 1px solid #1f2d45; padding-bottom: 1rem; }}
-  h2 {{ color: #3b82f6; font-size: 1rem; margin-top: 2rem; }}
-  .meta {{ color: #64748b; font-size: 0.8rem; margin-bottom: 2rem; font-family: monospace; }}
-  .resumo {{ display: flex; gap: 1rem; margin: 1.5rem 0; flex-wrap: wrap; }}
-  .card {{ background: #111827; border: 1px solid #1f2d45; border-radius: 8px; padding: 1rem 1.5rem; text-align: center; min-width: 110px; }}
-  .card .num {{ font-size: 2rem; font-weight: 800; line-height: 1; }}
-  .card .lbl {{ font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 1rem; }}
-  th {{ background: #111827; color: #64748b; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 12px; text-align: left; border-bottom: 1px solid #1f2d45; }}
-  td {{ padding: 10px 12px; border-bottom: 1px solid #1f2d451a; vertical-align: top; }}
-  tr:hover td {{ background: rgba(0,212,170,0.03); }}
-  code {{ background: #111827; padding: 2px 6px; border-radius: 4px; font-size: 0.78em; }}
-  .obs {{ background: #111827; border-left: 3px solid #00d4aa; padding: 1rem; border-radius: 0 6px 6px 0; margin: 1.5rem 0; font-size: 0.9rem; color: #94a3b8; }}
-  .info {{ font-size: 0.78rem; color: #475569; margin-top: 3rem; border-top: 1px solid #1f2d45; padding-top: 1rem; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: 'Trebuchet MS', Trebuchet, Arial, sans-serif;
+    background: #ffffff;
+    color: #1a1d26;
+    padding: 0;
+  }}
+
+  /* ── Header ── */
+  .header {{
+    background: linear-gradient(120deg, rgb(77,83,99) 0%, rgb(50,56,72) 100%);
+    padding: 1.5rem 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }}
+  .header-left h1 {{
+    color: rgb(68,205,148);
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+  }}
+  .header-left .sub {{
+    color: rgba(255,255,255,0.55);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }}
+  .header img {{ height: 36px; }}
+
+  /* ── Body content ── */
+  .content {{ padding: 2rem 2.5rem; }}
+
+  /* ── Meta line ── */
+  .meta {{
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    color: #6b7280;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }}
+  .meta strong {{ color: #1a1d26; }}
+
+  /* ── Section titles ── */
+  h2 {{
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: rgb(28,96,241);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin: 1.75rem 0 0.85rem 0;
+  }}
+
+  /* ── Metric cards ── */
+  .resumo {{ display: flex; gap: 0.85rem; flex-wrap: wrap; margin-bottom: 1.5rem; }}
+  .card {{
+    flex: 1; min-width: 100px;
+    background: #f4f6f9;
+    border: 1px solid #e5e7eb;
+    border-top: 3px solid rgb(68,205,148);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    text-align: center;
+  }}
+  .card .num {{ font-size: 1.9rem; font-weight: 800; line-height: 1; margin-bottom: 0.2rem; }}
+  .card .lbl {{ font-size: 0.6rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; }}
+
+  /* ── Obs box ── */
+  .obs {{
+    background: #f4f6f9;
+    border-left: 3px solid rgb(68,205,148);
+    border-radius: 0 6px 6px 0;
+    padding: 1rem 1.25rem;
+    font-size: 0.85rem;
+    color: #3d4252;
+    margin: 0 0 1.5rem 0;
+    line-height: 1.65;
+  }}
+
+  /* ── GlobalId tip ── */
+  .globalid-tip {{
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.85rem;
+    background: #eef1f8;
+    border-radius: 6px;
+    border-left: 3px solid rgb(28,96,241);
+  }}
+  .globalid-tip strong {{ color: rgb(28,96,241); }}
+
+  /* ── Table ── */
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.8rem; }}
+  thead {{ position: sticky; top: 0; }}
+  th {{
+    background: rgb(77,83,99);
+    color: #ffffff;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 2px solid rgb(28,96,241);
+    white-space: nowrap;
+  }}
+  th.col-gid {{ color: rgb(68,205,148); }}
+  td {{ padding: 9px 12px; border-bottom: 1px solid #f0f1f4; vertical-align: top; }}
+  tr:nth-child(even) td {{ background: #fafbfc; }}
+  tr:hover td {{ background: rgba(68,205,148,0.06); }}
+
+  /* ── Footer ── */
+  .footer {{
+    background: rgb(77,83,99);
+    padding: 1rem 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 2.5rem;
+  }}
+  .footer-left {{
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.5);
+    line-height: 1.6;
+  }}
+  .footer-left strong {{ color: rgb(68,205,148); display: block; margin-bottom: 0.2rem; font-size: 0.72rem; }}
+  .footer-left .autores {{ color: rgba(255,255,255,0.7); }}
+  .footer img {{ height: 24px; opacity: 0.85; }}
+  .footer-right {{
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.35);
+    text-align: right;
+  }}
 </style>
 </head>
 <body>
-<h1>♿ Relatório de Verificação de Acessibilidade BIM</h1>
-<p class="meta">
-  Norma: ABNT NBR 9050:2020 &nbsp;|&nbsp;
-  Modelo: <strong>{modelo_nome}</strong> &nbsp;|&nbsp;
-  Schema IFC: {resultado.get('schema_ifc','—')} &nbsp;|&nbsp;
-  Emitido em: {now}
-</p>
 
-<h2>Resumo Executivo</h2>
-<div class="resumo">
-  <div class="card"><div class="num" style="color:#e2e8f0">{resumo.get('total',0)}</div><div class="lbl">Total</div></div>
-  <div class="card"><div class="num" style="color:#10b981">{resumo.get('conformes',0)}</div><div class="lbl">Conformes</div></div>
-  <div class="card"><div class="num" style="color:#ef4444">{resumo.get('nao_conformes',0)}</div><div class="lbl">Não Conformes</div></div>
-  <div class="card"><div class="num" style="color:#f59e0b">{resumo.get('indeterminados',0)}</div><div class="lbl">Indeterminados</div></div>
-  <div class="card"><div class="num" style="color:#64748b">{resumo.get('na',0)}</div><div class="lbl">N/A</div></div>
-  <div class="card"><div class="num" style="color:#00d4aa">{resumo.get('percentual_conformidade','—')}</div><div class="lbl">Conformidade</div></div>
+<!-- ── Header ── -->
+<div class="header">
+  <div class="header-left">
+    <h1>&#9855; Relatório de Verificação de Acessibilidade BIM</h1>
+    <div class="sub">Verificação Automatizada de Conformidade &nbsp;·&nbsp; ABNT NBR 9050:2020</div>
+  </div>
+  <img src="https://www.e-zigurat.com/images/logo.svg" alt="Zigurat Institute of Technology" />
 </div>
 
-<div class="obs">{resultado.get('observacoes_gerais','Sem observações gerais.')}</div>
+<!-- ── Content ── -->
+<div class="content">
 
-<h2>Resultados Detalhados por Elemento</h2>
-<p style="font-size:0.78rem;color:#64748b">
-  💡 A coluna <strong>GlobalId</strong> corresponde ao identificador único do elemento no IFC.
-  Use-o no Revit (filtro por GlobalId) ou no BIMcollab/Solibri para localizar o elemento diretamente.
-</p>
-<table>
-  <thead>
-    <tr>
-      <th>Item NBR</th><th>Categoria</th><th>Elemento</th><th>Status</th>
-      <th>Valor Encontrado</th><th>Valor Exigido</th>
-      <th>GlobalId (IFC/Revit)</th><th>Tipo IFC</th><th>Recomendação</th>
-    </tr>
-  </thead>
-  <tbody>{rows}</tbody>
-</table>
+  <p class="meta">
+    Norma: <strong>ABNT NBR 9050:2020</strong> &nbsp;|&nbsp;
+    Modelo: <strong>{modelo_nome}</strong> &nbsp;|&nbsp;
+    Schema IFC: <strong>{resultado.get('schema_ifc','—')}</strong> &nbsp;|&nbsp;
+    Emitido em: <strong>{now}</strong>
+  </p>
 
-<div class="info">
-  Gerado automaticamente por sistema de IA — uso exclusivamente técnico e acadêmico.<br>
-  Verificação manual complementar é necessária para itens qualitativos e indeterminados.
+  <h2>Resumo Executivo</h2>
+  <div class="resumo">
+    <div class="card"><div class="num" style="color:#1a1d26">{resumo.get('total',0)}</div><div class="lbl">Total</div></div>
+    <div class="card"><div class="num" style="color:#1ab87a">{resumo.get('conformes',0)}</div><div class="lbl">Conformes</div></div>
+    <div class="card"><div class="num" style="color:#e03c3c">{resumo.get('nao_conformes',0)}</div><div class="lbl">Não Conformes</div></div>
+    <div class="card"><div class="num" style="color:#e8920a">{resumo.get('indeterminados',0)}</div><div class="lbl">Indeterminados</div></div>
+    <div class="card"><div class="num" style="color:#6b7280">{resumo.get('na',0)}</div><div class="lbl">N/A</div></div>
+    <div class="card"><div class="num" style="color:rgb(28,96,241)">{resumo.get('percentual_conformidade','—')}</div><div class="lbl">Conformidade</div></div>
+  </div>
+
+  <div class="obs">{resultado.get('observacoes_gerais','—')}</div>
+
+  <h2>Resultados Detalhados por Elemento</h2>
+  <div class="globalid-tip">
+    💡 A coluna <strong>GlobalId</strong> é o identificador único do elemento no IFC — o "CPF" do elemento.
+    Use-o no Revit (<em>Manage → Select by ID</em>), no Navisworks ou no BIMcollab para localizar o elemento diretamente no modelo.
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Item NBR</th>
+        <th>Categoria</th>
+        <th>Elemento</th>
+        <th>Status</th>
+        <th>Valor Encontrado</th>
+        <th>Valor Exigido</th>
+        <th class="col-gid">&#128273; GlobalId (IFC/Revit)</th>
+        <th>Tipo IFC</th>
+        <th>Recomendação</th>
+      </tr>
+    </thead>
+    <tbody>{rows}</tbody>
+  </table>
+
+</div><!-- /content -->
+
+<!-- ── Footer ── -->
+<div class="footer">
+  <div class="footer-left">
+    <strong>TFM | Grupo 1</strong>
+    <span class="autores">{AUTORES}</span>
+    <span style="color:rgba(255,255,255,0.3);font-size:0.65rem;margin-top:0.3rem;display:block">
+      Gerado automaticamente por IA — verificação manual complementar necessária para itens qualitativos e indeterminados.
+    </span>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.5rem">
+    <img src="https://www.e-zigurat.com/images/logo.svg" alt="Zigurat" />
+    <div class="footer-right">Master IA para AEC &nbsp;·&nbsp; {now}</div>
+  </div>
 </div>
+
 </body>
 </html>"""
 
@@ -998,9 +1161,14 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("""
-    <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.65rem;color:rgba(255,255,255,0.35);text-align:center;padding-top:0.5rem">
-    Zigurat Institute of Technology<br>
-    Master IA para AEC &middot; 2025
+    <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.62rem;color:rgba(255,255,255,0.35);padding-top:0.25rem;line-height:1.7">
+      <div style="color:rgb(68,205,148);font-weight:700;font-size:0.68rem;margin-bottom:0.2rem">TFM | Grupo 1</div>
+      Kevin Dias Quintian<br>
+      Renata Gomes Rocha<br>
+      Sergio Rosenboim<br>
+      Viviane Nishizaki Suzuke<br>
+      William Felipe dos Santos Moura<br>
+      <div style="margin-top:0.5rem;color:rgba(255,255,255,0.2)">Master IA para AEC &middot; Zigurat</div>
     </div>
     """, unsafe_allow_html=True)
 
