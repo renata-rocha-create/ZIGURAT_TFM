@@ -297,9 +297,15 @@ section[data-testid="stSidebar"] { min-width: 240px !important; transform: none 
 
 def extract_ifc_elements(ifc_path: str) -> dict:
     """
-    Extrai elementos do IFC para auditoria NBR 9050.
-    Estratégia: primária + fallback para cada categoria.
-    Retorna também um inventário completo de entidades para diagnóstico.
+    Extrai e pré-processa elementos do IFC para auditoria NBR 9050.
+    
+    DESCOBERTAS DO MODELO AGO-ARQ (IFC2X3/Revit):
+    - IfcStairFlight: NumberOfRisers, RiserHeight, TreadLength estão em PÉS → converter x0.3048
+    - IfcDoor: OverallHeight (pos 9), OverallWidth (pos 10) estão em METROS → correto
+    - IfcFlowTerminal: contém bacias, lavatórios, barras de apoio, torneiras — filtrar por nome
+    - IfcRailing: contém guarda-corpos (não corrimão) — modelo não tem corrimão separado
+    - IfcSpace: ausente neste modelo — fallback via IfcWall necessário
+    - IfcRamp/IfcRampFlight: ausentes neste modelo
     """
     try:
         import ifcopenshell
@@ -309,10 +315,9 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     ifc    = ifcopenshell.open(ifc_path)
     schema = ifc.schema
 
-    # ── Helpers ──────────────────────────────────────────────────────────────
+    FT_TO_M = 0.3048  # Revit exporta dimensões de escadas em pés para IFC2X3
 
     def todos_psets(el):
-        """Retorna TODOS os Psets do elemento."""
         psets = {}
         try:
             for rel in getattr(el, "IsDefinedBy", []):
@@ -335,19 +340,16 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         return psets
 
     def info_basica(el, tipo_ifc=None):
-        d = {
+        return {
             "GlobalId":    el.GlobalId,
             "Name":        getattr(el, "Name", None),
             "ObjectType":  getattr(el, "ObjectType", None),
             "Tag":         getattr(el, "Tag", None),
             "Description": getattr(el, "Description", None),
+            "tipo_ifc":    tipo_ifc or el.is_a(),
         }
-        if tipo_ifc:
-            d["tipo_ifc"] = tipo_ifc
-        return d
 
     def buscar_prop(psets, *termos):
-        """Busca valor em qualquer Pset que contenha um dos termos no nome da propriedade."""
         for ps in psets.values():
             for k, v in ps.items():
                 if any(t in k.lower() for t in termos) and v is not None:
@@ -362,45 +364,31 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         return obj
 
     def contar(tipo):
-        try:
-            return len(ifc.by_type(tipo))
-        except Exception:
-            return 0
+        try: return len(ifc.by_type(tipo))
+        except: return 0
 
     resultado = {"schema": schema, "arquivo": Path(ifc_path).name, "elementos": {}}
 
-    # ── Inventário completo (para diagnóstico e decisão de fallback pelo LLM) ─
-    inventario = {
-        "IfcDoor":                 contar("IfcDoor"),
-        "IfcWindow":               contar("IfcWindow"),
-        "IfcStair":                contar("IfcStair"),
-        "IfcStairFlight":          contar("IfcStairFlight"),
-        "IfcRamp":                 contar("IfcRamp"),
-        "IfcRampFlight":           contar("IfcRampFlight"),
-        "IfcRailing":              contar("IfcRailing"),
-        "IfcSpace":                contar("IfcSpace"),
-        "IfcSlab":                 contar("IfcSlab"),
-        "IfcWall":                 contar("IfcWall"),
-        "IfcWallStandardCase":     contar("IfcWallStandardCase"),
-        "IfcSanitaryTerminal":     contar("IfcSanitaryTerminal") if schema != "IFC2X3" else 0,
-        "IfcFlowTerminal":         contar("IfcFlowTerminal"),
-        "IfcFurnishingElement":    contar("IfcFurnishingElement"),
-        "IfcBuildingElementProxy": contar("IfcBuildingElementProxy"),
+    # ── Inventário ────────────────────────────────────────────────────────────
+    resultado["inventario_modelo"] = {
+        t: contar(t) for t in [
+            "IfcDoor","IfcWindow","IfcStair","IfcStairFlight","IfcRamp","IfcRampFlight",
+            "IfcRailing","IfcSpace","IfcSlab","IfcWall","IfcWallStandardCase",
+            "IfcFlowTerminal","IfcFurnishingElement","IfcBuildingElementProxy",
+        ]
     }
-    resultado["inventario_modelo"] = inventario
 
-    # ── 1. PORTAS (6.11.2 e 4.6.6) ──────────────────────────────────────────
+    # ── 1. PORTAS (6.11.2, 4.6.6) ────────────────────────────────────────────
+    # IfcDoor IFC2X3: campo 9=OverallHeight, campo 10=OverallWidth (em metros)
     portas = []
     for el in ifc.by_type("IfcDoor"):
         d = info_basica(el, "IfcDoor")
-        d["OverallWidth"]  = getattr(el, "OverallWidth", None)
-        d["OverallHeight"] = getattr(el, "OverallHeight", None)
-        ps = todos_psets(el)
-        d["Psets"] = ps
-        if d["OverallWidth"] is None:
-            d["OverallWidth"] = buscar_prop(ps, "width", "largura", "clear")
-        if d["OverallHeight"] is None:
-            d["OverallHeight"] = buscar_prop(ps, "height", "altura")
+        oh = getattr(el, "OverallHeight", None)
+        ow = getattr(el, "OverallWidth", None)
+        # Em IFC2X3 Revit: OverallHeight é o 1º parâmetro dimensional, OverallWidth o 2º
+        d["OverallHeight_m"] = round(float(oh), 3) if oh else None
+        d["OverallWidth_m"]  = round(float(ow), 3) if ow else None
+        d["Psets"] = todos_psets(el)
         portas.append(d)
     resultado["elementos"]["IfcDoor"] = portas[:60]
 
@@ -409,188 +397,181 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     for tipo in ["IfcRamp", "IfcRampFlight"]:
         for el in ifc.by_type(tipo):
             d = info_basica(el, tipo)
-            d["OverallRise"] = getattr(el, "OverallRise", None)
-            d["OverallRun"]  = getattr(el, "OverallRun", None)
-            ps = todos_psets(el)
-            d["Psets"] = ps
-            if d["OverallRise"] is None:
-                d["OverallRise"] = buscar_prop(ps, "rise", "desnivel", "height")
-            if d["OverallRun"] is None:
-                d["OverallRun"] = buscar_prop(ps, "run", "length", "comprimento")
+            rise = getattr(el, "OverallRise", None)
+            run  = getattr(el, "OverallRun", None)
+            d["OverallRise_m"] = round(float(rise) * FT_TO_M, 3) if rise else None
+            d["OverallRun_m"]  = round(float(run) * FT_TO_M, 3) if run else None
+            if d["OverallRise_m"] and d["OverallRun_m"] and d["OverallRun_m"] > 0:
+                d["inclinacao_pct"] = round(d["OverallRise_m"] / d["OverallRun_m"] * 100, 2)
+            d["Psets"] = todos_psets(el)
             rampas.append(d)
-    # Fallback: IfcSlab com nome sugestivo
+    # Fallback: IfcSlab com nome de rampa
     for el in ifc.by_type("IfcSlab"):
-        nome  = (getattr(el, "Name", "") or "").lower()
+        nome = (getattr(el, "Name", "") or "").lower()
         otype = (getattr(el, "ObjectType", "") or "").lower()
-        if any(t in nome + otype for t in ["rampa", "ramp", "rmp", "slope"]):
+        if any(t in nome + otype for t in ["rampa", "ramp", "slope"]):
             d = info_basica(el, "IfcSlab(rampa-fallback)")
             d["Psets"] = todos_psets(el)
             rampas.append(d)
     resultado["elementos"]["Rampas"] = rampas
+    resultado["nota_rampas"] = f"Modelo tem {contar('IfcRamp')} IfcRamp e {contar('IfcRampFlight')} IfcRampFlight. Sem rampas modeladas neste projeto."
 
-    # ── 3. ESCADAS (5.4.3) ───────────────────────────────────────────────────
+    # ── 3. ESCADAS + DESNÍVEL CALCULADO (5.4.3) ───────────────────────────────
+    # ATENÇÃO: RiserHeight e TreadLength do Revit/IFC2X3 estão em PÉS → x0.3048
     escadas = []
-    for tipo in ["IfcStair", "IfcStairFlight"]:
-        for el in ifc.by_type(tipo):
-            d = info_basica(el, tipo)
-            d["NumberOfRisers"] = getattr(el, "NumberOfRisers", None)
-            d["NumberOfTreads"] = getattr(el, "NumberOfTreads", None)
-            d["RiserHeight"]    = getattr(el, "RiserHeight", None)
-            d["TreadLength"]    = getattr(el, "TreadLength", None)
-            ps = todos_psets(el)
-            d["Psets"] = ps
-            if d["NumberOfRisers"] is None:
-                d["NumberOfRisers"] = buscar_prop(ps, "riser", "espelho", "numberof")
-            if d["RiserHeight"] is None:
-                d["RiserHeight"] = buscar_prop(ps, "riserheight", "espelho", "altura")
-            if d["TreadLength"] is None:
-                d["TreadLength"] = buscar_prop(ps, "tread", "piso", "profundidade")
-            # Calcula desnível se possível
-            nr = d.get("NumberOfRisers")
-            rh = d.get("RiserHeight")
-            if nr and rh:
-                try:
-                    d["desnivel_calculado_m"] = round(float(nr) * float(rh), 3)
-                except Exception:
-                    pass
-            escadas.append(d)
-    resultado["elementos"]["Escadas"] = escadas
+    for el in ifc.by_type("IfcStairFlight"):
+        d = info_basica(el, "IfcStairFlight")
+        nr = getattr(el, "NumberOfRisers", None)
+        nt = getattr(el, "NumberOfTreads", None)
+        rh = getattr(el, "RiserHeight", None)
+        tl = getattr(el, "TreadLength", None)
 
-    # ── 4. CORRIMÕES (5.4.3) ─────────────────────────────────────────────────
+        d["NumberOfRisers"] = int(nr) if nr else None
+        d["NumberOfTreads"] = int(nt) if nt else None
+        # CONVERSÃO: Revit exporta em pés
+        d["RiserHeight_m"]  = round(float(rh) * FT_TO_M, 4) if rh else None
+        d["TreadLength_m"]  = round(float(tl) * FT_TO_M, 4) if tl else None
+
+        # Desnível calculado = NumberOfRisers × RiserHeight (em metros)
+        if nr and rh:
+            d["desnivel_m"] = round(int(nr) * float(rh) * FT_TO_M, 3)
+
+        d["Psets"] = todos_psets(el)
+        escadas.append(d)
+
+    # Também inclui IfcStair (container) para contexto
+    for el in ifc.by_type("IfcStair"):
+        d = info_basica(el, "IfcStair")
+        d["Psets"] = todos_psets(el)
+        escadas.append(d)
+
+    resultado["elementos"]["Escadas"] = escadas
+    resultado["nota_escadas"] = (
+        f"ATENÇÃO: RiserHeight e TreadLength em IfcStairFlight deste modelo Revit estão em PÉS. "
+        f"Já convertidos para metros (×0.3048) nos campos RiserHeight_m e TreadLength_m. "
+        f"Use desnivel_m = NumberOfRisers × RiserHeight_m para calcular o desnível total."
+    )
+
+    # ── 4. CORRIMÕES / GUARDA-CORPOS (5.4.3) ─────────────────────────────────
+    # Modelo tem IfcRailing mas como "Guarda-corpo" — não como corrimão separado
     corrimaos = []
     for el in ifc.by_type("IfcRailing"):
         d = info_basica(el, "IfcRailing")
         ps = todos_psets(el)
         d["Psets"] = ps
-        d["Height"] = buscar_prop(ps, "height", "altura")
+        d["Height_m"] = buscar_prop(ps, "height", "altura")
+        nome = (getattr(el, "Name", "") or "").lower()
+        d["tipo_elemento"] = "guarda-corpo" if "guarda" in nome else ("corrimao" if "corrim" in nome else "railing")
         corrimaos.append(d)
-    termos_corrimao = ["corrimao", "corrimão", "handrail", "guard", "railing", "guarda"]
-    for el in ifc.by_type("IfcBuildingElementProxy"):
-        nome  = (getattr(el, "Name", "") or "").lower()
-        otype = (getattr(el, "ObjectType", "") or "").lower()
-        desc  = (getattr(el, "Description", "") or "").lower()
-        if any(t in nome + otype + desc for t in termos_corrimao):
-            d = info_basica(el, "IfcBuildingElementProxy(corrimao-fallback)")
-            ps = todos_psets(el)
-            d["Psets"] = ps
-            d["Height"] = buscar_prop(ps, "height", "altura")
-            corrimaos.append(d)
     resultado["elementos"]["Corrimaos"] = corrimaos
+    resultado["nota_corrimaos"] = (
+        f"Modelo tem {contar('IfcRailing')} IfcRailing, todos nomeados 'Guarda-corpo'. "
+        f"Não foram identificados corrimões separados (altura 0,70m e 0,92m). "
+        f"Verifique se corrimões estão modelados junto às escadas ou ausentes."
+    )
 
-    # ── 5. ESPAÇOS (6.11.1 e 7.5) ────────────────────────────────────────────
+    # ── 5. ESPAÇOS (6.11.1, 7.5) ─────────────────────────────────────────────
     espacos = []
     for el in ifc.by_type("IfcSpace"):
         d = info_basica(el, "IfcSpace")
         d["LongName"] = getattr(el, "LongName", None)
         ps = todos_psets(el)
         d["Psets"] = ps
-        d["Area"]   = buscar_prop(ps, "area", "grossarea", "netarea")
-        d["Width"]  = buscar_prop(ps, "width", "largura")
-        d["Length"] = buscar_prop(ps, "length", "comprimento")
+        d["Area_m2"] = buscar_prop(ps, "area", "grossarea", "netarea")
         espacos.append(d)
-    resultado["elementos"]["IfcSpace"] = espacos[:40]
+    resultado["elementos"]["IfcSpace"] = espacos
+    resultado["nota_espacos"] = (
+        f"Modelo tem {contar('IfcSpace')} IfcSpace. "
+        + ("AUSENTE: não é possível verificar largura de corredores (6.11.1) nem giro de cadeira (7.5) sem IfcSpace." if contar("IfcSpace") == 0 else "")
+    )
 
-    # ── 6. SANITÁRIOS (7.7.2.1, 7.7.1, 7.8) ──────────────────────────────────
-    sanitarios = []
-    termos_san = [
-        "bacia","vaso","wc","lavatório","lavatorio","pia",
-        "chuveiro","ducha","mictório","mictorio","sanit","toilet",
-        "sink","basin","shower","bath","tub","urinal","wash","lavab"
-    ]
-    if schema == "IFC2X3":
-        # IFC2X3: IfcFlowTerminal inclui TODOS os terminais — sem filtrar
-        for el in ifc.by_type("IfcFlowTerminal"):
-            d = info_basica(el, "IfcFlowTerminal")
-            ps = todos_psets(el)
-            d["Psets"] = ps
-            d["MountingHeight"] = buscar_prop(ps, "mountingheight", "height", "altura", "mounting")
-            sanitarios.append(d)
-        # Louças modeladas como mobiliário
-        for el in ifc.by_type("IfcFurnishingElement"):
-            nome  = (getattr(el, "Name", "") or "").lower()
-            otype = (getattr(el, "ObjectType", "") or "").lower()
-            desc  = (getattr(el, "Description", "") or "").lower()
-            if any(t in nome + otype + desc for t in termos_san):
-                d = info_basica(el, "IfcFurnishingElement(sanitario)")
-                ps = todos_psets(el)
-                d["Psets"] = ps
-                d["MountingHeight"] = buscar_prop(ps, "mountingheight", "height", "altura")
-                sanitarios.append(d)
-    else:
-        for tipo in ["IfcSanitaryTerminal", "IfcFlowTerminal"]:
-            for el in ifc.by_type(tipo):
-                nome  = (getattr(el, "Name", "") or "").lower()
-                otype = (getattr(el, "ObjectType", "") or "").lower()
-                desc  = (getattr(el, "Description", "") or "").lower()
-                if any(t in nome + otype + desc for t in termos_san):
-                    d = info_basica(el, tipo)
-                    ps = todos_psets(el)
-                    d["Psets"] = ps
-                    d["MountingHeight"] = buscar_prop(ps, "mountingheight", "height", "altura")
-                    sanitarios.append(d)
-    # Fallback: IfcBuildingElementProxy com nomes sanitários
-    for el in ifc.by_type("IfcBuildingElementProxy"):
+    # ── 6. SANITÁRIOS — classificados por tipo (7.7.2.1, 7.7.1, 7.8, 7.6-7.8) ─
+    # IfcFlowTerminal no Revit IFC2X3 contém TUDO: bacias, lavatórios, barras, torneiras
+    # Classificação pelo Name (em português, com marca Deca/Celite/Bobrick)
+    
+    TERMOS_BACIA   = ["bacia", "vaso", "toilet", "wc", "p.505", "vogue plus p"]
+    TERMOS_LAVAT   = ["lavatório", "lavatorio", "lavat", "cuba", "pia", "sink", "basin", "l.510", "l.830", "l.733"]
+    TERMOS_BARRA   = ["barra apoio", "grab bar", "barra de apoio", "2310.", "2335.", "apoio"]
+    TERMOS_CHUVEIRO= ["chuveiro", "ducha", "shower", "1955", "registro"]
+    TERMOS_OUTROS  = ["torneira", "dispenser", "papel", "cadeira de banho", "válvula", "sifão", "coluna"]
+
+    bacias = []
+    lavatórios = []
+    barras = []
+    outros_san = []
+
+    for el in ifc.by_type("IfcFlowTerminal"):
         nome  = (getattr(el, "Name", "") or "").lower()
         otype = (getattr(el, "ObjectType", "") or "").lower()
-        desc  = (getattr(el, "Description", "") or "").lower()
-        if any(t in nome + otype + desc for t in termos_san):
-            d = info_basica(el, "IfcBuildingElementProxy(sanitario-fallback)")
-            ps = todos_psets(el)
-            d["Psets"] = ps
-            d["MountingHeight"] = buscar_prop(ps, "mountingheight", "height", "altura")
-            sanitarios.append(d)
-    resultado["elementos"]["Sanitarios"] = sanitarios[:60]
+        texto = nome + " " + otype
+
+        d = info_basica(el, "IfcFlowTerminal")
+        ps = todos_psets(el)
+        d["Psets"] = ps
+        d["MountingHeight_m"] = buscar_prop(ps, "mountingheight", "height", "altura", "mounting")
+
+        if any(t in texto for t in TERMOS_BACIA):
+            d["categoria_sanitario"] = "bacia_sanitaria"
+            bacias.append(d)
+        elif any(t in texto for t in TERMOS_LAVAT):
+            d["categoria_sanitario"] = "lavatorio"
+            lavatórios.append(d)
+        elif any(t in texto for t in TERMOS_BARRA):
+            d["categoria_sanitario"] = "barra_apoio"
+            barras.append(d)
+        elif any(t in texto for t in TERMOS_CHUVEIRO):
+            d["categoria_sanitario"] = "chuveiro"
+            outros_san.append(d)
+        else:
+            d["categoria_sanitario"] = "outros"
+            outros_san.append(d)
+
+    resultado["elementos"]["Bacias"]    = bacias[:20]
+    resultado["elementos"]["Lavatorios"] = lavatórios[:20]
+    resultado["elementos"]["BarrasApoio"] = barras[:20]
+    resultado["elementos"]["OutrosSanitarios"] = outros_san[:10]
+    resultado["nota_sanitarios"] = (
+        f"IfcFlowTerminal classificados: {len(bacias)} bacias, {len(lavatórios)} lavatórios, "
+        f"{len(barras)} barras de apoio, {len(outros_san)} outros (chuveiros, torneiras, dispensers). "
+        f"Total IfcFlowTerminal no modelo: {contar('IfcFlowTerminal')}."
+    )
 
     # ── 7. JANELAS (6.11.3) ──────────────────────────────────────────────────
     janelas = []
     for el in ifc.by_type("IfcWindow"):
         d = info_basica(el, "IfcWindow")
-        d["OverallWidth"]  = getattr(el, "OverallWidth", None)
-        d["OverallHeight"] = getattr(el, "OverallHeight", None)
+        oh = getattr(el, "OverallHeight", None)
+        ow = getattr(el, "OverallWidth", None)
+        d["OverallHeight_m"] = round(float(oh), 3) if oh else None
+        d["OverallWidth_m"]  = round(float(ow), 3) if ow else None
         ps = todos_psets(el)
         d["Psets"] = ps
-        d["SillHeight"] = buscar_prop(ps, "sill", "peitoril", "sillheight")
+        d["SillHeight_m"] = buscar_prop(ps, "sill", "peitoril", "sillheight")
         janelas.append(d)
     resultado["elementos"]["IfcWindow"] = janelas[:40]
 
-    # ── 8. PISOS / DESNÍVEIS (6.3.4) ─────────────────────────────────────────
+    # ── 8. PISOS (6.3.4) ─────────────────────────────────────────────────────
     pisos = []
     for el in ifc.by_type("IfcSlab"):
-        nome  = (getattr(el, "Name", "") or "").lower()
+        nome = (getattr(el, "Name", "") or "").lower()
         otype = (getattr(el, "ObjectType", "") or "").lower()
-        if any(t in nome + otype for t in ["rampa", "ramp", "rmp"]):
+        if any(t in nome + otype for t in ["rampa", "ramp"]):
             continue
         d = info_basica(el, "IfcSlab")
         ps = todos_psets(el)
         d["Psets"] = ps
-        d["Elevation"] = buscar_prop(ps, "elevation", "cota", "level", "z")
+        d["Elevation_m"] = buscar_prop(ps, "elevation", "cota", "level")
         pisos.append(d)
-    resultado["elementos"]["IfcSlab"] = pisos[:30]
+    resultado["elementos"]["IfcSlab"] = pisos[:25]
 
-    # ── 9. BARRAS DE APOIO (7.6–7.8) ─────────────────────────────────────────
-    barras = []
-    termos_barra = ["barra", "apoio", "grab", "handrail", "rail", "suporte"]
-    for tipo in ["IfcFurnishingElement", "IfcBuildingElementProxy", "IfcRailing"]:
-        for el in ifc.by_type(tipo):
-            nome  = (getattr(el, "Name", "") or "").lower()
-            desc  = (getattr(el, "Description", "") or "").lower()
-            otype = (getattr(el, "ObjectType", "") or "").lower()
-            if any(t in nome + desc + otype for t in termos_barra):
-                d = info_basica(el, tipo)
-                ps = todos_psets(el)
-                d["Psets"] = ps
-                d["Height"] = buscar_prop(ps, "height", "altura", "mounting")
-                barras.append(d)
-    resultado["elementos"]["BarrasApoio"] = barras
-
-    # ── 10. PAREDES — amostra para fallback de corredores ─────────────────────
+    # ── 9. PAREDES — amostra (fallback para corredores) ───────────────────────
     paredes = []
-    for el in list(ifc.by_type("IfcWall"))[:10] + list(ifc.by_type("IfcWallStandardCase"))[:10]:
+    for el in list(ifc.by_type("IfcWall"))[:8] + list(ifc.by_type("IfcWallStandardCase"))[:8]:
         d = info_basica(el, el.is_a())
         ps = todos_psets(el)
-        d["Width"]  = buscar_prop(ps, "width", "thickness", "espessura")
-        d["Length"] = buscar_prop(ps, "length", "comprimento")
-        d["Height"] = buscar_prop(ps, "height", "altura")
+        d["Width_m"]  = buscar_prop(ps, "width", "thickness", "espessura")
+        d["Length_m"] = buscar_prop(ps, "length", "comprimento")
+        d["Height_m"] = buscar_prop(ps, "height", "altura")
         paredes.append(d)
     resultado["elementos"]["IfcWall_amostra"] = paredes
 
@@ -1837,4 +1818,3 @@ with tab_ajuda:
     Verificação manual complementar é sempre recomendada.
     </div>
     """, unsafe_allow_html=True)
-
