@@ -121,6 +121,12 @@ html, body, .stApp, [class*="css"] {
 [data-testid="stSidebar"] [data-testid="stSlider"] [data-baseweb="slider"] div[role="progressbar"] {
     background: var(--zk-green) !important;
 }
+/* Ocultar o valor flutuante nativo (tooltip do thumb) */
+[data-testid="stSidebar"] [data-testid="stSlider"] [data-baseweb="tooltip"],
+[data-testid="stSidebar"] [data-testid="stSlider"] div[data-testid="stTickBarMin"],
+[data-testid="stSidebar"] [data-testid="stSlider"] div[data-testid="stTickBarMax"] {
+    display: none !important;
+}
 
 /* ════════════════════════════════════
    HERO — fundo BRANCO, borda escura
@@ -1103,7 +1109,6 @@ with st.sidebar:
         label_visibility="collapsed",
         help="0.0 = determinístico (recomendado para auditoria) | 1.0 = mais criativo"
     )
-    st.markdown(f'<div style="font-family:\'Courier New\',monospace;font-size:0.78rem;font-weight:700;color:rgb(28,96,241);background:#eef1f8;border:1px solid #d1d5de;border-radius:4px;padding:2px 8px;display:inline-block;margin-top:2px">{temperature:.2f}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("""
@@ -1530,4 +1535,5 @@ with tab_ajuda:
     Verificação manual complementar é sempre recomendada.
     </div>
     """, unsafe_allow_html=True)
+
 
