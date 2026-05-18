@@ -479,73 +479,261 @@ def extract_ifc_elements(ifc_path: str) -> dict:
 
 
 def read_xlsx_items(xlsx_bytes: bytes) -> list[dict]:
-    """Read NBR items from uploaded Excel file."""
+    """Read NBR items from uploaded Excel file — aba 'Itens Verificáveis — NBR 9050'."""
     try:
         import pandas as pd
-        df = pd.read_excel(io.BytesIO(xlsx_bytes))
+        # Tenta ler a aba principal com as estratégias e prompts
+        xf = pd.ExcelFile(io.BytesIO(xlsx_bytes))
+        aba = next((s for s in xf.sheet_names if "verific" in s.lower()), xf.sheet_names[0])
+        df = pd.read_excel(io.BytesIO(xlsx_bytes), sheet_name=aba, header=1)
+        df.columns = [str(c).strip() for c in df.columns]
         return df.to_dict(orient="records")
     except Exception as e:
         return [{"error": str(e)}]
 
 
+# ── Regras hardcoded da planilha (usadas quando XLSX não é enviado) ─────────
+REGRAS_NBR9050 = [
+    {
+        "item_nbr": "6.6",
+        "subcategoria": "Rampas",
+        "item_verificavel": "Desnível de 1,50m = 5%; 1m = 6,25%; 0,80m = 8,33%",
+        "classificacao": "Geométrica",
+        "entidade_primaria": "IfcRamp, IfcRampFlight",
+        "entidade_fallback": "IfcSlab",
+        "estrategia_primaria": "Extrair OverallRise e OverallRun de IfcRampFlight; calcular inclinação por faixa de desnível e comparar com limite da NBR",
+        "estrategia_fallback": "Calcular inclinação da geometria (OverallRise/Run). Se inclinação > 2% e < 30% → tratar como rampa",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 6.6). Nos elementos fornecidos, localize IfcRamp e IfcRampFlight. Para cada um, extraia OverallRise e OverallRun e calcule inclinação = OverallRise / OverallRun × 100. Compare: desnível ≤ 0,80m → máx 8,33%; ≤ 1,00m → máx 6,25%; ≤ 1,50m → máx 5,00%. FALLBACK: se não houver IfcRamp/IfcRampFlight, verifique IfcSlab com nome contendo 'rampa' ou 'ramp' nos elementos fornecidos. Se nenhum elemento de rampa existir no modelo, retorne status 'Indeterminado' explicando a ausência.",
+    },
+    {
+        "item_nbr": "6.11.1",
+        "subcategoria": "Corredores",
+        "item_verificavel": "Largura mín. 0,90m (≤4m); 1,20m (≤10m); 1,50m (>10m)",
+        "classificacao": "Geométrica",
+        "entidade_primaria": "IfcSpace",
+        "entidade_fallback": "IfcWall",
+        "estrategia_primaria": "Identificar IfcSpace de circulação; calcular comprimento e largura; aplicar regra condicional por faixa",
+        "estrategia_fallback": "Se IfcSpace não disponível, inferir largura a partir de paredes opostas (IfcWall)",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 6.11.1). Nos elementos fornecidos, localize IfcSpace com Name/LongName contendo 'corredor', 'circulação', 'hall', 'acesso' ou 'passagem'. Para cada um, estime comprimento e largura. Aplique: comprimento ≤ 4m → largura mín 0,90m; ≤ 10m → mín 1,20m; > 10m → mín 1,50m. FALLBACK: se IfcSpace ausente nos dados fornecidos, registre 'Indeterminado' por ausência de IfcSpace no modelo e recomende modelar espaços de circulação.",
+    },
+    {
+        "item_nbr": "6.11.2",
+        "subcategoria": "Portas",
+        "item_verificavel": "Vão livre mín. 0,80m (largura) e 2,10m (altura)",
+        "classificacao": "Geométrica",
+        "entidade_primaria": "IfcDoor",
+        "entidade_fallback": "IfcOpeningElement",
+        "estrategia_primaria": "Extrair OverallWidth e OverallHeight de IfcDoor; aplicar >= 0,80m e >= 2,10m",
+        "estrategia_fallback": "Se OverallWidth/Height ausentes, extrair dimensões do IfcOpeningElement associado",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 6.11.2). Para cada IfcDoor nos elementos fornecidos, extraia OverallWidth e OverallHeight. Verifique: largura ≥ 0,80m E altura ≥ 2,10m → Conforme; qualquer dimensão menor → Não Conforme; sem dimensões → Indeterminado. Inclua o GlobalId de cada porta verificada.",
+    },
+    {
+        "item_nbr": "6.11.3",
+        "subcategoria": "Janelas",
+        "item_verificavel": "Peitoril mínimo de 1,20m (exceto áreas com necessidade de privacidade)",
+        "classificacao": "Condicional",
+        "entidade_primaria": "IfcWindow",
+        "entidade_fallback": "IfcOpeningElement",
+        "estrategia_primaria": "Extrair Sill Height via Pset_WindowCommon; verificar IfcSpace pai para checar privacidade",
+        "estrategia_fallback": "Calcular z mínimo da abertura em relação ao piso do IfcSpace pai",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 6.11.3). Para cada IfcWindow nos elementos fornecidos, extraia SillHeight ou altura do peitoril via Psets. Verifique: se o espaço for banheiro/vestiário/dormitório → 'N/A'. Caso contrário, SillHeight ≥ 1,20m → Conforme; < 1,20m → Não Conforme; sem dados → Indeterminado.",
+    },
+    {
+        "item_nbr": "5.4.3",
+        "subcategoria": "Corrimão",
+        "item_verificavel": "Corrimão em ambos os lados de rampas e escadas; alturas 0,70m e 0,92m — obrigatório se desnível > 0,19m",
+        "classificacao": "Condicional",
+        "entidade_primaria": "IfcRailing",
+        "entidade_fallback": "IfcBuildingElementProxy com nome 'corrimão' ou 'handrail'",
+        "estrategia_primaria": "Identificar IfcRailing associado a IfcRamp ou IfcStair; verificar ambos os lados; extrair altura",
+        "estrategia_fallback": "Buscar IfcBuildingElementProxy com Name/ObjectType contendo 'corrimão' ou 'handrail'",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 5.4.3). Nos elementos fornecidos, localize IfcStair e IfcRamp. Para cada um, calcule o desnível total (NumberOfRisers × RiserHeight ou OverallRise). Se desnível ≤ 0,19m → 'N/A'. Se > 0,19m, verifique: (a) IfcRailing presente em ambos os lados; (b) altura 0,70m e 0,92m. FALLBACK: busque IfcBuildingElementProxy com 'corrimão' ou 'handrail' no Name/ObjectType. Sem nenhum elemento de corrimão → Indeterminado com recomendação de verificação in loco.",
+    },
+    {
+        "item_nbr": "6.3.4",
+        "subcategoria": "Piso / Desníveis",
+        "item_verificavel": "Desnível entre 5mm e 20mm deve ter chanfro com inclinação máxima 1:2",
+        "classificacao": "Condicional",
+        "entidade_primaria": "IfcSlab",
+        "entidade_fallback": "IfcBuildingElementProxy com nome 'chanfro' ou 'transition'",
+        "estrategia_primaria": "Detectar adjacência entre IfcSlab com diferença de z entre 5mm e 20mm; verificar chanfro",
+        "estrategia_fallback": "Buscar IfcBuildingElementProxy com 'chanfro', 'rampa de acesso' ou 'transition' no Name",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 6.3.4). Nos IfcSlab fornecidos, analise se há indicação de desníveis entre pisos. Para diferença < 5mm → 'N/A'; entre 5mm e 20mm → verifique chanfro (inclinação ≤ 1:2 = 50%); > 20mm → 'Fora do escopo (degrau)'. FALLBACK: busque IfcBuildingElementProxy com 'chanfro' ou 'rampa de acesso'. Se não houver dados suficientes → Indeterminado.",
+    },
+    {
+        "item_nbr": "7.5",
+        "subcategoria": "Circulação sanitários",
+        "item_verificavel": "Giro 360° da cadeira de rodas — diâmetro de 1,50m",
+        "classificacao": "Relacional",
+        "entidade_primaria": "IfcSpace",
+        "entidade_fallback": "IfcSlab",
+        "estrategia_primaria": "Extrair polígono do piso de IfcSpace de sanitário; verificar se círculo r=0,75m cabe no polígono",
+        "estrategia_fallback": "Se IfcSpace ausente, reconstruir polígono via IfcSlab do ambiente",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.5). Nos elementos fornecidos, localize IfcSpace identificado como sanitário acessível (banheiro, WC, sanitário). Estime se a área comporta um círculo de diâmetro 1,50m: área mínima aproximada ≥ 1,77m². FALLBACK: se IfcSpace ausente → Indeterminado com recomendação de modelar IfcSpace para verificação espacial.",
+    },
+    {
+        "item_nbr": "7.7.2.1",
+        "subcategoria": "Bacia sanitária",
+        "item_verificavel": "Altura entre 0,43m e 0,45m (sem assento)",
+        "classificacao": "Relacional",
+        "entidade_primaria": "IfcSanitaryTerminal",
+        "entidade_fallback": "IfcFlowTerminal",
+        "estrategia_primaria": "Extrair MountingHeight via Pset_SanitaryTerminalTypeCommon; verificar 0,43m ≤ altura ≤ 0,45m",
+        "estrategia_fallback": "Calcular z máximo da geometria como proxy da borda superior",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.7.2.1). Nos elementos fornecidos, localize IfcSanitaryTerminal ou IfcFlowTerminal com Name/ObjectType/Description contendo 'bacia', 'vaso', 'wc', 'toilet' ou 'sanitário'. Para cada um, extraia MountingHeight dos Psets. Verifique: 0,43m ≤ MountingHeight ≤ 0,45m → Conforme; fora do intervalo → Não Conforme; sem MountingHeight → Indeterminado. Inclua o GlobalId de cada elemento verificado.",
+    },
+    {
+        "item_nbr": "7.7.1",
+        "subcategoria": "Vaso sanitário",
+        "item_verificavel": "Área de transferência lateral: espaço livre de 0,80m × 1,20m",
+        "classificacao": "Relacional",
+        "entidade_primaria": "IfcSanitaryTerminal, IfcSpace",
+        "entidade_fallback": "IfcBuildingElementProxy com 'vaso', 'bacia' ou 'WC'",
+        "estrategia_primaria": "Identificar vaso dentro do IfcSpace; verificar espaço livre ≥ 0,80m × 1,20m ao lado",
+        "estrategia_fallback": "Reconstruir polígono via IfcWall; buscar proxy com 'vaso', 'bacia' ou 'WC'",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.7.1). Nos elementos fornecidos, localize IfcSanitaryTerminal ou IfcFlowTerminal identificados como vaso sanitário. Verifique se há IfcSpace associado que permita área de transferência lateral ≥ 0,80m × 1,20m. Se área do espaço > 2,5m² → provavelmente Conforme; < 1,5m² → provavelmente Não Conforme; sem dados espaciais → Indeterminado.",
+    },
+    {
+        "item_nbr": "4.6.6",
+        "subcategoria": "Maçaneta",
+        "item_verificavel": "Maçaneta tipo alavanca (não esférica) em portas de uso comum e acessível",
+        "classificacao": "Qualitativa",
+        "entidade_primaria": "IfcDoor",
+        "entidade_fallback": "IfcDoorStyle, IfcDoorType",
+        "estrategia_primaria": "LLM analisa Name, ObjectType, Description para classificar tipo de maçaneta",
+        "estrategia_fallback": "Consultar IfcDoorStyle ou IfcDoorType associado",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 4.6.6). Para cada IfcDoor nos elementos fornecidos, analise Name, ObjectType, Description e Psets. Classifique: termos como 'alavanca', 'lever', 'handle' → Conforme; 'esférica', 'knob', 'giratória', 'round' → Não Conforme; sem informação → Indeterminado. Inclua o GlobalId de cada porta.",
+    },
+    {
+        "item_nbr": "7.6-7.8",
+        "subcategoria": "Barras de apoio",
+        "item_verificavel": "Barras de apoio instaladas corretamente (posição e altura ~0,75m)",
+        "classificacao": "Qualitativa",
+        "entidade_primaria": "IfcFurnishingElement",
+        "entidade_fallback": "IfcBuildingElementProxy com 'barra', 'apoio' ou 'grab bar'",
+        "estrategia_primaria": "LLM analisa Name, ObjectType, Description para identificar barras de apoio",
+        "estrategia_fallback": "Buscar IfcBuildingElementProxy com 'barra', 'apoio', 'grab bar' ou 'handrail'",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (itens 7.6–7.8). Nos elementos fornecidos, localize IfcFurnishingElement ou IfcBuildingElementProxy com 'barra', 'apoio', 'grab bar' no Name/Description. Verifique posição (lateral/frontal/fundo do vaso) e altura (~0,75m). FALLBACK: se nenhum elemento encontrado → Indeterminado com recomendação de verificar instalação in loco.",
+    },
+    {
+        "item_nbr": "7.8",
+        "subcategoria": "Lavatório",
+        "item_verificavel": "Sem coluna ou suspenso (acesso frontal garantido)",
+        "classificacao": "Qualitativa",
+        "entidade_primaria": "IfcSanitaryTerminal",
+        "entidade_fallback": "IfcFlowTerminal",
+        "estrategia_primaria": "LLM classifica tipo via Name + ObjectType + Description",
+        "estrategia_fallback": "Ambas as entidades são válidas para este item",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.8). Nos elementos fornecidos, localize IfcSanitaryTerminal ou IfcFlowTerminal com 'lavatório', 'lavatorio', 'sink', 'basin', 'pia' no Name/Description. Classifique: 'suspenso', 'sem coluna' → Conforme; 'com coluna', 'pedestal' → Não Conforme; sem informação → Indeterminado. Inclua o GlobalId.",
+    },
+]
+
+
 def build_audit_prompt(elementos: dict, norma_items: list, modelo_nome: str) -> str:
-    """Build the LLM prompt for NBR 9050 audit."""
-    # Limita o JSON de elementos a 28k chars (~7k tokens) para deixar espaço à resposta
+    """
+    Constrói prompt de auditoria usando as regras da planilha NBR 9050.
+    Cada item tem: estratégia primária, fallback, e prompt especializado.
+    """
+    schema = elementos.get("schema", "IFC2X3")
     elementos_json = json.dumps(elementos, ensure_ascii=False, default=str)[:28000]
-    norma_json = json.dumps(norma_items, ensure_ascii=False)[:6000] if norma_items else "Usar os 12 itens padrão da NBR 9050:2020"
 
-    return f"""Você é um especialista em acessibilidade arquitetônica e norma ABNT NBR 9050:2020.
+    # Monta as regras — usa planilha se enviada, senão usa hardcoded
+    regras_uso = REGRAS_NBR9050
+    if norma_items and len(norma_items) > 0 and "error" not in str(norma_items[0]):
+        # Tenta extrair as colunas relevantes da planilha enviada
+        try:
+            regras_planilha = []
+            for row in norma_items:
+                item_nbr = str(row.get("Item NBR 9050", row.get("Item_NBR", ""))).strip()
+                subcat   = str(row.get("Subcategoria", "")).strip()
+                item_v   = str(row.get("Item Verificável", row.get("Item Verificable", ""))).strip()
+                classi   = str(row.get("Classificação", "")).strip()
+                ep       = str(row.get("Estratégia primária", "")).strip()
+                ef       = str(row.get("Estratégia de fallback", "")).strip()
+                prompt_r = str(row.get("Estrutura de Prompt para incluir no arquivo.json (regras do sistema)", "")).strip()
+                ent_p    = str(row.get("Entidade IFC (primária)", "")).strip()
+                ent_f    = str(row.get("Entidade IFC (alternativa / fallback)", "")).strip()
+                if item_nbr and item_nbr != "nan" and prompt_r and prompt_r != "nan":
+                    regras_planilha.append({
+                        "item_nbr": item_nbr,
+                        "subcategoria": subcat,
+                        "item_verificavel": item_v,
+                        "classificacao": classi,
+                        "entidade_primaria": ent_p,
+                        "entidade_fallback": ent_f,
+                        "estrategia_primaria": ep,
+                        "estrategia_fallback": ef,
+                        "prompt": prompt_r,
+                    })
+            if regras_planilha:
+                regras_uso = regras_planilha
+        except Exception:
+            pass  # Fallback para regras hardcoded
 
-Analise os elementos BIM extraídos do modelo IFC "{modelo_nome}" e verifique a conformidade com a NBR 9050:2020.
+    # Monta bloco de instruções por item
+    instrucoes_por_item = ""
+    for r in regras_uso:
+        instrucoes_por_item += f"""
+### Item {r['item_nbr']} — {r['subcategoria']}
+- **Verificação:** {r['item_verificavel']}
+- **Classificação:** {r['classificacao']}
+- **Entidade primária:** {r['entidade_primaria']}
+- **Entidade fallback:** {r['entidade_fallback']}
+- **Estratégia primária:** {r['estrategia_primaria']}
+- **Estratégia fallback:** {r['estrategia_fallback']}
+- **Instrução de auditoria:** {r['prompt']}
+"""
 
-## ITENS NORMATIVOS A VERIFICAR
-{norma_json}
+    return f"""Você é um auditor especialista em acessibilidade arquitetônica e ABNT NBR 9050:2020.
+
+## MODELO IFC
+Nome: "{modelo_nome}" | Schema: {schema}
+
+## REGRA FUNDAMENTAL
+Para CADA item abaixo, siga SEMPRE esta ordem:
+1. Tente localizar a **entidade primária** nos elementos fornecidos
+2. Se não encontrar, aplique a **estratégia de fallback** com a entidade alternativa
+3. Somente marque "Indeterminado" se AMBAS as estratégias falharem
+4. NUNCA omita um item — todos os {len(regras_uso)} itens devem ter resultado
+
+## INSTRUÇÕES POR ITEM (da planilha NBR 9050 TFM)
+{instrucoes_por_item}
 
 ## ELEMENTOS EXTRAÍDOS DO MODELO IFC
 {elementos_json}
 
-## INSTRUÇÕES
-Para cada item normativo, gere um resultado com:
-1. **item_nbr**: código do item (ex: "6.11.2")
-2. **categoria**: Rampas | Portas | Corredores | Sanitários | Escadas | Pisos | Janelas | Circulação
-3. **elemento**: descrição do elemento analisado
-4. **globalid**: GlobalId do elemento no IFC (OBRIGATÓRIO quando encontrado — usado para filtro no Revit/BIM)
-5. **tipo_ifc**: entidade IFC (ex: IfcDoor, IfcRamp)
-6. **valor_encontrado**: dimensão/condição encontrada no modelo
-7. **valor_exigido**: requisito da norma
-8. **status**: "Conforme" | "Não Conforme" | "Indeterminado" | "N/A"
-9. **recomendacao**: ação corretiva se não conforme, ou motivo se indeterminado
-
 ## FORMATO DE RESPOSTA
-Responda SOMENTE com JSON válido, sem markdown, sem texto extra:
+Responda SOMENTE com JSON válido, sem markdown, sem texto extra.
+Gere EXATAMENTE {len(regras_uso)} resultados — um por item acima.
+Para itens com múltiplos elementos (ex: 50 portas), agrupe em um único resultado representativo com o GlobalId do elemento mais crítico.
 
 {{
   "modelo": "{modelo_nome}",
-  "schema_ifc": "IFC2X3 ou IFC4",
-  "data_auditoria": "dd/mm/aaaa",
+  "schema_ifc": "{schema}",
+  "data_auditoria": "{datetime.now().strftime('%d/%m/%Y')}",
   "resultados": [
     {{
       "item_nbr": "6.11.2",
       "categoria": "Portas",
       "subcategoria": "Vão livre mínimo",
-      "elemento": "Porta P01 — Pavimento Térreo",
+      "elemento": "50 portas analisadas — pior caso: POR_01",
       "globalid": "0yScVqI2LFdAHBnJsma8Hp",
       "tipo_ifc": "IfcDoor",
-      "valor_encontrado": "0,78m × 2,10m",
+      "valor_encontrado": "0,78m × 2,10m (pior caso)",
       "valor_exigido": "≥ 0,80m × 2,10m",
       "status": "Não Conforme",
-      "recomendacao": "Ampliar vão livre para mínimo de 0,80m conforme NBR 9050 item 6.11.2."
+      "recomendacao": "1 porta com largura 0,78m — ampliar para ≥ 0,80m."
     }}
   ],
   "resumo": {{
-    "total": 12,
-    "conformes": 5,
-    "nao_conformes": 3,
-    "indeterminados": 3,
-    "na": 1,
-    "percentual_conformidade": "62%"
+    "total": {len(regras_uso)},
+    "conformes": 0,
+    "nao_conformes": 0,
+    "indeterminados": 0,
+    "na": 0,
+    "percentual_conformidade": "0%"
   }},
-  "observacoes_gerais": "Texto com análise geral do modelo..."
+  "observacoes_gerais": "Análise geral aqui..."
 }}
 """
 
