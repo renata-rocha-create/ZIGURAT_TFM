@@ -1293,23 +1293,14 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("""
-    <div class="info-box">
-    <strong>Sobre o GlobalId</strong><br>
-    O relatório inclui o <code>GlobalId</code> de cada elemento IFC verificado.
-    Use esse ID no Revit (<em>Manage → Select by ID</em>) para selecionar o elemento diretamente.
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("""
-    <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.62rem;color:rgba(255,255,255,0.35);padding-top:0.25rem;line-height:1.7">
+    <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.62rem;color:rgb(77,83,99);padding-top:0.25rem;line-height:1.7">
       <div style="color:rgb(68,205,148);font-weight:700;font-size:0.68rem;margin-bottom:0.2rem">TFM | Grupo 1</div>
       Kevin Dias Quintian<br>
       Renata Gomes Rocha<br>
       Sergio Rosenboim<br>
       Viviane Nishizaki Suzuke<br>
       William Felipe dos Santos Moura<br>
-      <div style="margin-top:0.5rem;color:rgba(255,255,255,0.2)">Master IA para AEC &middot; Zigurat</div>
+      <div style="margin-top:0.5rem;color:rgb(77,83,99,0.5);font-size:0.6rem">Master IA para AEC &middot; Zigurat</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1514,6 +1505,16 @@ with tab_resultado:
             st.markdown(f'<div class="info-box">💬 <strong>Análise Geral:</strong> {obs}</div>', unsafe_allow_html=True)
 
         st.markdown("---")
+
+        # GlobalId explanation
+        st.markdown("""
+        <div class="info-box">
+          <strong>🔑 Sobre o GlobalId</strong><br>
+          O relatório inclui o <code>GlobalId</code> de cada elemento IFC verificado — é o identificador único do elemento no modelo, como um "CPF" do componente BIM.<br>
+          <strong>Como usar no Revit:</strong> aba <em>Manage → Inquiry → IFC GUID</em> para localizar o elemento diretamente.
+          No <strong>BIMcollab Zoom</strong>, <strong>Solibri</strong> ou <strong>usBIM viewer</strong> (gratuitos), cole o GlobalId no campo de busca para selecionar o elemento instantaneamente.
+        </div>
+        """, unsafe_allow_html=True)
 
         # Filters
         col_f1, col_f2, col_f3 = st.columns(3)
