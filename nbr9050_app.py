@@ -58,7 +58,7 @@ html, body, .stApp, [class*="css"] {
    ════════════════════════════════════ */
 [data-testid="stSidebar"] {
     background: #ffffff !important;
-    border-right: 3px solid var(--zk-green) !important;
+    border-right: 5px solid var(--zk-green) !important;
 }
 /* Textos escuros na sidebar branca */
 [data-testid="stSidebar"] p,
@@ -112,17 +112,14 @@ html, body, .stApp, [class*="css"] {
 
 /* ── Slider na sidebar ── */
 [data-testid="stSidebar"] [data-baseweb="slider"] { background: var(--border) !important; }
-[data-testid="stSidebar"] [role="slider"] { background: var(--zk-green) !important; }
-/* Números min/max e valor do slider — fundo visível */
-[data-testid="stSidebar"] [data-testid="stSlider"] p { color: var(--text) !important; font-weight: 600 !important; }
-[data-testid="stSidebar"] [data-testid="stSlider"] [data-testid="stMarkdownContainer"] p {
-    color: var(--zk-blue) !important;
-    font-weight: 700 !important;
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 4px !important;
-    padding: 1px 7px !important;
-    display: inline-block !important;
+[data-testid="stSidebar"] [role="slider"] {
+    background: var(--zk-green) !important;
+    width: 20px !important; height: 20px !important;
+    border: 3px solid #ffffff !important;
+    box-shadow: 0 0 0 2px var(--zk-green) !important;
+}
+[data-testid="stSidebar"] [data-testid="stSlider"] [data-baseweb="slider"] div[role="progressbar"] {
+    background: var(--zk-green) !important;
 }
 
 /* ════════════════════════════════════
@@ -222,18 +219,19 @@ html, body, .stApp, [class*="css"] {
 [data-testid="stMain"] [data-baseweb="select"] > div { background: var(--surface) !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
 [data-testid="stMain"] [data-baseweb="select"] span { color: var(--text) !important; }
 
-/* ── File uploader ── */
-[data-testid="stFileUploader"] { background: var(--surface) !important; border: 1.5px dashed var(--border) !important; border-radius: 8px !important; }
-[data-testid="stFileUploader"]:hover { border-color: var(--zk-green) !important; }
+/* ── File uploader — borda verde chamativa ── */
+[data-testid="stFileUploader"] { background: #f0fdf8 !important; border: 2px dashed var(--zk-green) !important; border-radius: 8px !important; }
+[data-testid="stFileUploader"]:hover { background: #e6faf3 !important; border-color: var(--zk-blue) !important; }
 [data-testid="stFileUploader"] span, [data-testid="stFileUploader"] p { color: var(--text) !important; }
 
-/* ── Botão principal ── */
+/* ── Botão principal — verde chamativo ── */
 .stButton button {
-    background: var(--zk-green) !important; color: rgb(30,35,45) !important;
-    font-family: var(--font) !important; font-weight: 700 !important; font-size: 0.85rem !important;
-    border: none !important; border-radius: 6px !important; padding: 0.6rem 1.5rem !important; transition: all 0.2s !important;
+    background: var(--zk-green) !important; color: rgb(20,60,40) !important;
+    font-family: var(--font) !important; font-weight: 700 !important; font-size: 0.9rem !important;
+    border: none !important; border-radius: 6px !important; padding: 0.65rem 1.75rem !important;
+    transition: all 0.2s !important; letter-spacing: 0.02em !important;
 }
-.stButton button:hover { background: var(--zk-blue) !important; color: #ffffff !important; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(28,96,241,0.25) !important; }
+.stButton button:hover { background: var(--zk-blue) !important; color: #ffffff !important; transform: translateY(-1px); box-shadow: 0 4px 18px rgba(28,96,241,0.3) !important; }
 .stButton button:disabled { background: var(--border) !important; color: var(--muted) !important; transform: none !important; }
 
 /* ── Download buttons ── */
@@ -1097,8 +1095,15 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-    temperature = st.slider("🌡 Temperature", 0.0, 1.0, 0.1, 0.05,
-                            help="0.0 = determinístico | 1.0 = mais criativo. Para auditoria normativa, use 0.0–0.2")
+    st.markdown('<div style="font-family:\'Trebuchet MS\',sans-serif;font-size:0.82rem;font-weight:700;color:rgb(28,96,241);margin-bottom:2px">🌡 Temperature</div>', unsafe_allow_html=True)
+    temperature = st.slider(
+        "Temperature",
+        0.0, 1.0, 0.0, 0.05,
+        format="%.2f",
+        label_visibility="collapsed",
+        help="0.0 = determinístico (recomendado para auditoria) | 1.0 = mais criativo"
+    )
+    st.markdown(f'<div style="font-family:\'Courier New\',monospace;font-size:0.78rem;font-weight:700;color:rgb(28,96,241);background:#eef1f8;border:1px solid #d1d5de;border-radius:4px;padding:2px 8px;display:inline-block;margin-top:2px">{temperature:.2f}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("""
@@ -1537,8 +1542,5 @@ st.markdown("""
       William Felipe dos Santos Moura
     </div>
   </div>
-  <img src="https://www.e-zigurat.com/images/logo.svg"
-       style="height:28px;flex-shrink:0"
-       alt="Zigurat Institute of Technology" />
 </div>
 """, unsafe_allow_html=True)
