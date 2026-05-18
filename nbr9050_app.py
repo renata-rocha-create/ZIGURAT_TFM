@@ -1289,14 +1289,7 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-    st.markdown('<div style="font-family:\'Trebuchet MS\',sans-serif;font-size:0.82rem;font-weight:700;color:rgb(28,96,241);margin-bottom:2px">🌡 Temperature</div>', unsafe_allow_html=True)
-    temperature = st.slider(
-        "Temperature",
-        0.0, 1.0, 0.0, 0.05,
-        format="%.2f",
-        label_visibility="collapsed",
-        help="0.0 = determinístico (recomendado para auditoria) | 1.0 = mais criativo"
-    )
+    temperature = 0.0  # Fixo em 0.0 — determinístico para auditoria normativa
 
     st.markdown("---")
     st.markdown("""
@@ -1723,5 +1716,3 @@ with tab_ajuda:
     Verificação manual complementar é sempre recomendada.
     </div>
     """, unsafe_allow_html=True)
-
-
