@@ -27,116 +27,131 @@ st.markdown("""
 <style>
 
 :root {
-    --zk-slate:   rgb(77,83,99);
-    --zk-green:   rgb(68,205,148);
-    --zk-blue:    rgb(28,96,241);
-    --bg:         #ffffff;
-    --surface:    #f4f6f9;
-    --surface2:   #eaecf1;
-    --border:     #d1d5de;
-    --text:       #1a1d26;
-    --muted:      #6b7280;
-    --success:    #1ab87a;
-    --danger:     #e03c3c;
-    --warn:       #e8920a;
+    --zk-slate:  rgb(77,83,99);
+    --zk-green:  rgb(68,205,148);
+    --zk-blue:   rgb(28,96,241);
+    --bg:        #ffffff;
+    --surface:   #f4f6f9;
+    --border:    #d1d5de;
+    --border-dk: rgb(77,83,99);
+    --text:      #1a1d26;
+    --muted:     #6b7280;
+    --success:   #1ab87a;
+    --danger:    #e03c3c;
+    --warn:      #e8920a;
     --font: 'Trebuchet MS', Trebuchet, Arial, sans-serif;
     --mono: 'Courier New', Courier, monospace;
 }
 
-/* ── Global — fundo branco, texto escuro ── */
+/* ── Global ── */
 html, body, .stApp, [class*="css"] {
     font-family: var(--font) !important;
     background-color: var(--bg) !important;
     color: var(--text) !important;
 }
 .stApp { background-color: var(--bg) !important; }
-
-/* ── Todos os textos no main content sempre escuros ── */
 .stApp p, .stApp span, .stApp label, .stApp div,
-.stApp h1, .stApp h2, .stApp h3, .stApp li {
-    color: var(--text) !important;
-}
+.stApp h1, .stApp h2, .stApp h3, .stApp li { color: var(--text) !important; }
 
-/* ── Sidebar: fundo slate, textos BRANCOS forçados ── */
+/* ════════════════════════════════════
+   SIDEBAR — fundo BRANCO
+   ════════════════════════════════════ */
 [data-testid="stSidebar"] {
-    background: var(--zk-slate) !important;
-    border-right: 1px solid #3a3f4f !important;
+    background: #ffffff !important;
+    border-right: 3px solid var(--zk-green) !important;
 }
-/* Todos os elementos dentro da sidebar: branco */
+/* Textos escuros na sidebar branca */
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] div,
 [data-testid="stSidebar"] small,
-[data-testid="stSidebar"] .stMarkdown { color: #ffffff !important; }
+[data-testid="stSidebar"] .stMarkdown { color: var(--text) !important; }
 
-/* Inputs dentro da sidebar: fundo escuro, texto branco */
+/* Inputs na sidebar: fundo cinza claro, texto escuro */
 [data-testid="stSidebar"] input {
-    background: rgba(255,255,255,0.12) !important;
-    color: #ffffff !important;
-    border: 1px solid rgba(255,255,255,0.25) !important;
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
     border-radius: 6px !important;
     font-family: var(--font) !important;
 }
-[data-testid="stSidebar"] input::placeholder { color: rgba(255,255,255,0.4) !important; }
+[data-testid="stSidebar"] input::placeholder { color: var(--muted) !important; }
 
-/* Selectbox dentro da sidebar: fundo escuro */
+/* Selectbox na sidebar */
 [data-testid="stSidebar"] [data-baseweb="select"] > div {
-    background: rgba(255,255,255,0.12) !important;
-    border: 1px solid rgba(255,255,255,0.25) !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
     border-radius: 6px !important;
 }
 [data-testid="stSidebar"] [data-baseweb="select"] span,
 [data-testid="stSidebar"] [data-baseweb="select"] div {
-    color: #ffffff !important;
+    color: var(--text) !important;
     font-family: var(--font) !important;
 }
-/* Dropdown list (fora da sidebar, mas do mesmo select) */
+
+/* Dropdown list */
 [data-baseweb="popover"] [role="option"] {
-    background: var(--zk-slate) !important;
-    color: #ffffff !important;
+    background: #ffffff !important;
+    color: var(--text) !important;
     font-family: var(--font) !important;
 }
 [data-baseweb="popover"] [role="option"]:hover,
 [data-baseweb="popover"] [aria-selected="true"] {
-    background: rgba(68,205,148,0.25) !important;
-    color: #ffffff !important;
+    background: rgba(68,205,148,0.15) !important;
+    color: var(--text) !important;
 }
 
-/* Slider na sidebar */
-[data-testid="stSidebar"] [data-testid="stSlider"] label { color: #e0e2e8 !important; }
-[data-testid="stSidebar"] [data-baseweb="slider"] { background: rgba(255,255,255,0.2) !important; }
+/* Linha separadora verde na sidebar */
+[data-testid="stSidebar"] hr { border-color: var(--zk-green) !important; border-width: 2px !important; }
 
-/* ── Hero banner ── */
+/* Labels da sidebar */
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stSlider label { color: var(--zk-slate) !important; font-weight: 600 !important; }
+
+/* ── Slider na sidebar ── */
+[data-testid="stSidebar"] [data-baseweb="slider"] { background: var(--border) !important; }
+[data-testid="stSidebar"] [role="slider"] { background: var(--zk-green) !important; }
+/* Números min/max e valor do slider — fundo visível */
+[data-testid="stSidebar"] [data-testid="stSlider"] p { color: var(--text) !important; font-weight: 600 !important; }
+[data-testid="stSidebar"] [data-testid="stSlider"] [data-testid="stMarkdownContainer"] p {
+    color: var(--zk-blue) !important;
+    font-weight: 700 !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 4px !important;
+    padding: 1px 7px !important;
+    display: inline-block !important;
+}
+
+/* ════════════════════════════════════
+   HERO — fundo BRANCO, borda escura
+   ════════════════════════════════════ */
 .hero-block {
-    background: linear-gradient(120deg, rgb(77,83,99) 0%, rgb(50,56,72) 100%);
+    background: #ffffff;
+    border: 2px solid var(--zk-slate);
     border-radius: 10px;
-    padding: 1.75rem 2rem;
+    padding: 1.5rem 2rem;
     margin-bottom: 1.5rem;
-    position: relative;
-    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
 }
 .hero-title {
     font-family: var(--font);
     font-size: 1.75rem;
     font-weight: 700;
-    color: rgb(68,205,148) !important;
+    color: var(--zk-slate) !important;
     margin: 0 0 0.2rem 0;
 }
 .hero-sub {
     font-family: var(--font);
     font-size: 0.72rem;
-    color: rgba(255,255,255,0.6) !important;
+    color: var(--muted) !important;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-}
-/* Logo no hero: cores originais (sem filter) */
-.hero-logo {
-    height: 38px;
-    flex-shrink: 0;
 }
 
 /* ── Section titles ── */
@@ -154,14 +169,7 @@ html, body, .stApp, [class*="css"] {
 }
 
 /* ── Status badges ── */
-.badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 20px;
-    font-family: var(--font);
-    font-size: 0.72rem;
-    font-weight: 600;
-}
+.badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-family: var(--font); font-size: 0.72rem; font-weight: 600; }
 .badge-conforme { background: rgba(26,184,122,0.12); color: #0a7a4e !important; border: 1px solid rgba(26,184,122,0.35); }
 .badge-nao      { background: rgba(224,60,60,0.10);  color: #9b1c1c !important; border: 1px solid rgba(224,60,60,0.35); }
 .badge-indet    { background: rgba(232,146,10,0.12); color: #7a4500 !important; border: 1px solid rgba(232,146,10,0.35); }
@@ -170,48 +178,20 @@ html, body, .stApp, [class*="css"] {
 /* ── Result table ── */
 .result-table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
 .result-table th {
-    font-family: var(--font);
-    font-size: 0.67rem;
-    color: #ffffff !important;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    border-bottom: 2px solid var(--zk-blue);
-    padding: 9px 12px;
-    text-align: left;
-    background: var(--zk-slate);
+    font-family: var(--font); font-size: 0.67rem; color: #ffffff !important;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    border-bottom: 2px solid var(--zk-blue); padding: 9px 12px;
+    text-align: left; background: var(--zk-slate);
 }
-.result-table td {
-    padding: 9px 12px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
-    color: var(--text) !important;
-}
+.result-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text) !important; }
 .result-table tr:hover td { background: rgba(68,205,148,0.05); }
 
 /* ── GlobalId chip ── */
-.globalid {
-    font-family: var(--mono);
-    font-size: 0.67rem;
-    background: #eef1f8;
-    border: 1px solid #c5cad8;
-    border-radius: 4px;
-    padding: 2px 6px;
-    color: var(--zk-blue) !important;
-    display: inline-block;
-}
+.globalid { font-family: var(--mono); font-size: 0.67rem; background: #eef1f8; border: 1px solid #c5cad8; border-radius: 4px; padding: 2px 6px; color: var(--zk-blue) !important; display: inline-block; }
 
 /* ── Metric cards ── */
 .metric-row { display: flex; gap: 0.85rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-.metric-card {
-    flex: 1;
-    min-width: 110px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-top: 3px solid var(--zk-green);
-    border-radius: 8px;
-    padding: 1rem;
-    text-align: center;
-}
+.metric-card { flex: 1; min-width: 110px; background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--zk-green); border-radius: 8px; padding: 1rem; text-align: center; }
 .metric-num { font-family: var(--font); font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 0.2rem; }
 .metric-label { font-family: var(--font); font-size: 0.62rem; color: var(--muted) !important; text-transform: uppercase; letter-spacing: 0.08em; }
 .c-green { color: var(--success) !important; }
@@ -220,128 +200,56 @@ html, body, .stApp, [class*="css"] {
 .c-blue  { color: var(--zk-blue) !important; }
 .c-muted { color: var(--muted)   !important; }
 
-/* ── Terminal log: fundo slate, texto verde Zigurat ── */
+/* ── Terminal ── */
 .terminal {
-    background: rgb(77,83,99);
-    border: 1px solid #3a3f4f;
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    font-family: var(--mono);
-    font-size: 0.74rem;
-    color: rgb(68,205,148) !important;
-    max-height: 280px;
-    overflow-y: auto;
-    line-height: 1.7;
+    background: var(--zk-slate); border: 1px solid #3a3f4f; border-radius: 8px;
+    padding: 1rem 1.25rem; font-family: var(--mono); font-size: 0.74rem;
+    color: var(--zk-green) !important; max-height: 280px; overflow-y: auto; line-height: 1.7;
 }
 
-/* ── Inputs no main content ── */
+/* ── Inputs main content ── */
 .stTextInput input, .stTextArea textarea {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-    border-radius: 6px !important;
-    font-family: var(--font) !important;
-    font-size: 0.82rem !important;
+    background: var(--surface) !important; border: 1px solid var(--border) !important;
+    color: var(--text) !important; border-radius: 6px !important;
+    font-family: var(--font) !important; font-size: 0.82rem !important;
 }
 .stTextInput input:focus, .stTextArea textarea:focus {
     border-color: var(--zk-green) !important;
     box-shadow: 0 0 0 2px rgba(68,205,148,0.2) !important;
 }
 
-/* Selectbox no main content */
-[data-testid="stMain"] [data-baseweb="select"] > div {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-}
+/* Selectbox main content */
+[data-testid="stMain"] [data-baseweb="select"] > div { background: var(--surface) !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
 [data-testid="stMain"] [data-baseweb="select"] span { color: var(--text) !important; }
 
 /* ── File uploader ── */
-[data-testid="stFileUploader"] {
-    background: var(--surface) !important;
-    border: 1.5px dashed var(--border) !important;
-    border-radius: 8px !important;
-}
+[data-testid="stFileUploader"] { background: var(--surface) !important; border: 1.5px dashed var(--border) !important; border-radius: 8px !important; }
 [data-testid="stFileUploader"]:hover { border-color: var(--zk-green) !important; }
 [data-testid="stFileUploader"] span, [data-testid="stFileUploader"] p { color: var(--text) !important; }
 
 /* ── Botão principal ── */
 .stButton button {
-    background: var(--zk-green) !important;
-    color: rgb(30,35,45) !important;
-    font-family: var(--font) !important;
-    font-weight: 700 !important;
-    font-size: 0.85rem !important;
-    border: none !important;
-    border-radius: 6px !important;
-    padding: 0.6rem 1.5rem !important;
-    transition: all 0.2s !important;
+    background: var(--zk-green) !important; color: rgb(30,35,45) !important;
+    font-family: var(--font) !important; font-weight: 700 !important; font-size: 0.85rem !important;
+    border: none !important; border-radius: 6px !important; padding: 0.6rem 1.5rem !important; transition: all 0.2s !important;
 }
-.stButton button:hover {
-    background: rgb(28,96,241) !important;
-    color: #ffffff !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(28,96,241,0.25) !important;
-}
-.stButton button:disabled {
-    background: var(--border) !important;
-    color: var(--muted) !important;
-    transform: none !important;
-}
+.stButton button:hover { background: var(--zk-blue) !important; color: #ffffff !important; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(28,96,241,0.25) !important; }
+.stButton button:disabled { background: var(--border) !important; color: var(--muted) !important; transform: none !important; }
 
 /* ── Download buttons ── */
-[data-testid="stDownloadButton"] button {
-    background: var(--surface) !important;
-    color: var(--zk-blue) !important;
-    border: 1.5px solid var(--zk-blue) !important;
-    font-family: var(--font) !important;
-    font-weight: 600 !important;
-}
-[data-testid="stDownloadButton"] button:hover {
-    background: var(--zk-blue) !important;
-    color: #ffffff !important;
-}
+[data-testid="stDownloadButton"] button { background: var(--surface) !important; color: var(--zk-blue) !important; border: 1.5px solid var(--zk-blue) !important; font-family: var(--font) !important; font-weight: 600 !important; }
+[data-testid="stDownloadButton"] button:hover { background: var(--zk-blue) !important; color: #ffffff !important; }
 
 /* ── Expander ── */
-.streamlit-expanderHeader {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
-    font-family: var(--font) !important;
-    font-size: 0.82rem !important;
-    color: var(--text) !important;
-}
+.streamlit-expanderHeader { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 6px !important; font-family: var(--font) !important; font-size: 0.82rem !important; color: var(--text) !important; }
 
 /* ── Tabs ── */
-[data-testid="stTabs"] [role="tab"] {
-    font-family: var(--font) !important;
-    font-size: 0.82rem !important;
-    color: var(--muted) !important;
-}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-    color: var(--zk-blue) !important;
-    border-bottom-color: var(--zk-blue) !important;
-}
+[data-testid="stTabs"] [role="tab"] { font-family: var(--font) !important; font-size: 0.82rem !important; color: var(--muted) !important; }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] { color: var(--zk-blue) !important; border-bottom-color: var(--zk-blue) !important; }
 
 /* ── Info / warning boxes ── */
-.info-box {
-    background: rgba(28,96,241,0.06);
-    border-left: 3px solid var(--zk-blue);
-    border-radius: 0 6px 6px 0;
-    padding: 0.75rem 1rem;
-    font-size: 0.82rem;
-    color: #1a3fa8 !important;
-    margin: 0.75rem 0;
-}
-.warn-box {
-    background: rgba(232,146,10,0.08);
-    border-left: 3px solid var(--warn);
-    border-radius: 0 6px 6px 0;
-    padding: 0.75rem 1rem;
-    font-size: 0.82rem;
-    color: #7a4500 !important;
-    margin: 0.75rem 0;
-}
+.info-box { background: rgba(28,96,241,0.06); border-left: 3px solid var(--zk-blue); border-radius: 0 6px 6px 0; padding: 0.75rem 1rem; font-size: 0.82rem; color: #1a3fa8 !important; margin: 0.75rem 0; }
+.warn-box { background: rgba(232,146,10,0.08); border-left: 3px solid var(--warn); border-radius: 0 6px 6px 0; padding: 0.75rem 1rem; font-size: 0.82rem; color: #7a4500 !important; margin: 0.75rem 0; }
 
 /* ── Divider ── */
 hr { border-color: var(--border) !important; }
@@ -349,32 +257,26 @@ hr { border-color: var(--border) !important; }
 /* ── Pulse ── */
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(68,205,148,0.4); } 50% { box-shadow: 0 0 0 8px rgba(68,205,148,0); } }
 
-/* ── Slider na sidebar: trilho + número visível ── */
-[data-testid="stSidebar"] [data-testid="stSlider"] { padding-bottom: 0.5rem; }
-[data-testid="stSidebar"] [data-baseweb="slider"] { background: rgba(255,255,255,0.25) !important; }
-[data-testid="stSidebar"] [data-testid="stSlider"] p,
-[data-testid="stSidebar"] [data-testid="stSlider"] span,
-[data-testid="stSidebar"] [data-testid="stSlider"] div { color: #ffffff !important; }
-/* Caixa do valor (thumb tooltip) */
-[data-testid="stSidebar"] [role="slider"] { background: rgb(68,205,148) !important; }
-[data-testid="stSidebar"] .stSlider > div > div > div > div {
-    background: rgba(255,255,255,0.12) !important;
-    border-radius: 6px !important;
-    padding: 2px 6px !important;
-}
-/* Número do valor atual do slider */
-[data-testid="stSidebar"] [data-testid="stSlider"] [data-testid="stMarkdownContainer"] p {
-    color: rgb(68,205,148) !important;
-    font-weight: 700 !important;
-    font-size: 0.82rem !important;
-    background: rgba(0,0,0,0.2) !important;
-    border-radius: 4px !important;
-    padding: 1px 6px !important;
-    display: inline-block !important;
-}
-
-/* ── Slider no main content ── */
+/* ── Slider main content ── */
 .stSlider [data-baseweb="slider"] { background: var(--border) !important; }
+
+/* ════════════════════════════════════
+   RODAPÉ — fundo BRANCO, borda escura
+   ════════════════════════════════════ */
+.footer-app {
+    background: #ffffff;
+    border: 2px solid var(--zk-slate);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin-top: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+.footer-app-tfm { color: var(--zk-green) !important; font-weight: 700; font-size: 0.72rem; margin-bottom: 0.15rem; }
+.footer-app-autores { color: var(--zk-slate) !important; font-size: 0.65rem; }
 
 /* ── Ocultar chrome do Streamlit ── */
 #MainMenu, footer, header { visibility: hidden; }
@@ -1146,15 +1048,13 @@ for k, v in {
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("""
-    <div style="padding:1rem 0 1.5rem 0;border-bottom:1px solid rgba(255,255,255,0.12);margin-bottom:1rem">
-      <div style="background:#ffffff;border-radius:7px;padding:5px 12px;display:inline-flex;align-items:center;margin-bottom:0.75rem">
-        <img src="https://www.e-zigurat.com/images/logo.svg"
-             style="height:24px;display:block" alt="Zigurat" />
-      </div>
-      <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:1rem;font-weight:700;color:rgb(68,205,148)">
+    <div style="padding:1rem 0 1.5rem 0;border-bottom:2px solid rgb(68,205,148);margin-bottom:1rem">
+      <img src="https://www.e-zigurat.com/images/logo.svg"
+           style="height:28px;display:block;margin-bottom:0.75rem" alt="Zigurat" />
+      <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:1rem;font-weight:700;color:rgb(28,96,241)">
         &#9855; NBR 9050 Auditor
       </div>
-      <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.65rem;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.1em">
+      <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.65rem;color:rgb(77,83,99);text-transform:uppercase;letter-spacing:0.1em">
         BIM Accessibility Checker
       </div>
     </div>
@@ -1232,11 +1132,9 @@ st.markdown("""
     <div class="hero-title">&#9855; Auditor de Acessibilidade BIM</div>
     <div class="hero-sub">Verificação Automatizada de Conformidade &nbsp;·&nbsp; ABNT NBR 9050:2020 &nbsp;·&nbsp; Powered by IA</div>
   </div>
-  <div style="background:#ffffff;border-radius:8px;padding:6px 14px;display:flex;align-items:center;flex-shrink:0">
-    <img src="https://www.e-zigurat.com/images/logo.svg"
-         style="height:32px;display:block"
-         alt="Zigurat Institute of Technology" />
-  </div>
+  <img src="https://www.e-zigurat.com/images/logo.svg"
+       style="height:36px;flex-shrink:0"
+       alt="Zigurat Institute of Technology" />
 </div>
 """, unsafe_allow_html=True)
 
@@ -1630,29 +1528,17 @@ with tab_ajuda:
 
 # ── Rodapé fixo ──────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="
-  background: rgb(77,83,99);
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
-  margin-top: 2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-">
+<div class="footer-app">
   <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;line-height:1.7">
-    <div style="color:rgb(68,205,148);font-weight:700;font-size:0.72rem;margin-bottom:0.15rem">TFM | Grupo 1</div>
-    <div style="color:rgba(255,255,255,0.65);font-size:0.65rem">
+    <div class="footer-app-tfm">TFM | Grupo 1</div>
+    <div class="footer-app-autores">
       Kevin Dias Quintian &nbsp;·&nbsp; Renata Gomes Rocha &nbsp;·&nbsp;
       Sergio Rosenboim &nbsp;·&nbsp; Viviane Nishizaki Suzuke &nbsp;·&nbsp;
       William Felipe dos Santos Moura
     </div>
   </div>
-  <div style="background:#ffffff;border-radius:7px;padding:5px 12px;display:inline-flex;align-items:center">
-    <img src="https://www.e-zigurat.com/images/logo.svg"
-         style="height:22px;display:block"
-         alt="Zigurat Institute of Technology" />
-  </div>
+  <img src="https://www.e-zigurat.com/images/logo.svg"
+       style="height:28px;flex-shrink:0"
+       alt="Zigurat Institute of Technology" />
 </div>
 """, unsafe_allow_html=True)
