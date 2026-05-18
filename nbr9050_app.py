@@ -1531,16 +1531,3 @@ with tab_ajuda:
     </div>
     """, unsafe_allow_html=True)
 
-# ── Rodapé fixo ──────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="footer-app">
-  <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;line-height:1.7">
-    <div class="footer-app-tfm">TFM | Grupo 1</div>
-    <div class="footer-app-autores">
-      Kevin Dias Quintian &nbsp;·&nbsp; Renata Gomes Rocha &nbsp;·&nbsp;
-      Sergio Rosenboim &nbsp;·&nbsp; Viviane Nishizaki Suzuke &nbsp;·&nbsp;
-      William Felipe dos Santos Moura
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
