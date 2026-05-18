@@ -349,7 +349,31 @@ hr { border-color: var(--border) !important; }
 /* ── Pulse ── */
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(68,205,148,0.4); } 50% { box-shadow: 0 0 0 8px rgba(68,205,148,0); } }
 
-/* ── Slider ── */
+/* ── Slider na sidebar: trilho + número visível ── */
+[data-testid="stSidebar"] [data-testid="stSlider"] { padding-bottom: 0.5rem; }
+[data-testid="stSidebar"] [data-baseweb="slider"] { background: rgba(255,255,255,0.25) !important; }
+[data-testid="stSidebar"] [data-testid="stSlider"] p,
+[data-testid="stSidebar"] [data-testid="stSlider"] span,
+[data-testid="stSidebar"] [data-testid="stSlider"] div { color: #ffffff !important; }
+/* Caixa do valor (thumb tooltip) */
+[data-testid="stSidebar"] [role="slider"] { background: rgb(68,205,148) !important; }
+[data-testid="stSidebar"] .stSlider > div > div > div > div {
+    background: rgba(255,255,255,0.12) !important;
+    border-radius: 6px !important;
+    padding: 2px 6px !important;
+}
+/* Número do valor atual do slider */
+[data-testid="stSidebar"] [data-testid="stSlider"] [data-testid="stMarkdownContainer"] p {
+    color: rgb(68,205,148) !important;
+    font-weight: 700 !important;
+    font-size: 0.82rem !important;
+    background: rgba(0,0,0,0.2) !important;
+    border-radius: 4px !important;
+    padding: 1px 6px !important;
+    display: inline-block !important;
+}
+
+/* ── Slider no main content ── */
 .stSlider [data-baseweb="slider"] { background: var(--border) !important; }
 
 /* ── Ocultar chrome do Streamlit ── */
@@ -1543,17 +1567,17 @@ with tab_ajuda:
         ("7.8", "Qualitativa", "Sanitários", "Lavatório suspenso ou sem coluna", "IfcFlowTerminal"),
     ]
 
-    cat_colors = {"Geométrica": "#3b82f6", "Condicional": "#f59e0b", "Relacional": "#10b981", "Qualitativa": "#8b5cf6"}
+    cat_colors = {"Geométrica": "rgb(28,96,241)", "Condicional": "#e8920a", "Relacional": "#1ab87a", "Qualitativa": "rgb(77,83,99)"}
     rows_help = ""
     for item_nbr, classificacao, cat, desc, entidade in itens_padrao:
-        color = cat_colors.get(classificacao, "#64748b")
+        color = cat_colors.get(classificacao, "#6b7280")
         rows_help += f"""
         <tr>
-          <td style="font-family:var(--mono);color:#94a3b8">{item_nbr}</td>
+          <td style="font-family:'Courier New',monospace;color:rgb(28,96,241);font-weight:600">{item_nbr}</td>
           <td><span style="color:{color};font-size:0.78rem;font-weight:600">{classificacao}</span></td>
-          <td style="color:#cbd5e1">{cat}</td>
-          <td style="color:#e2e8f0">{desc}</td>
-          <td style="font-family:var(--mono);font-size:0.72rem;color:#475569">{entidade}</td>
+          <td style="color:#1a1d26">{cat}</td>
+          <td style="color:#3d4252">{desc}</td>
+          <td style="font-family:'Courier New',monospace;font-size:0.72rem;color:#6b7280">{entidade}</td>
         </tr>"""
 
     st.markdown(f"""
@@ -1574,3 +1598,29 @@ with tab_ajuda:
     </div>
     """, unsafe_allow_html=True)
 
+# ── Rodapé fixo ──────────────────────────────────────────────────────────────
+st.markdown("""
+<div style="
+  background: rgb(77,83,99);
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-top: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+">
+  <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;line-height:1.7">
+    <div style="color:rgb(68,205,148);font-weight:700;font-size:0.72rem;margin-bottom:0.15rem">TFM | Grupo 1</div>
+    <div style="color:rgba(255,255,255,0.65);font-size:0.65rem">
+      Kevin Dias Quintian &nbsp;·&nbsp; Renata Gomes Rocha &nbsp;·&nbsp;
+      Sergio Rosenboim &nbsp;·&nbsp; Viviane Nishizaki Suzuke &nbsp;·&nbsp;
+      William Felipe dos Santos Moura
+    </div>
+  </div>
+  <img src="https://www.e-zigurat.com/images/logo.svg"
+       style="height:22px;opacity:0.85"
+       alt="Zigurat Institute of Technology" />
+</div>
+""", unsafe_allow_html=True)
