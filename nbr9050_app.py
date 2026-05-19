@@ -730,83 +730,235 @@ REGRAS_NBR9050 = [
 ]
 
 
+def _resumo_elementos(elementos: dict) -> str:
+    """
+    Gera um resumo estruturado dos elementos extraídos, item por item da NBR.
+    Em vez de despejar JSON bruto, apresenta os dados de forma orientada à verificação.
+    """
+    inv = elementos.get("inventario_modelo", {})
+    linhas = []
+
+    # ── Inventário ────────────────────────────────────────────────────────────
+    linhas.append("## INVENTÁRIO DO MODELO")
+    for entidade, qtd in inv.items():
+        linhas.append(f"  {entidade}: {qtd} elementos")
+
+    # ── Notas do modelo ───────────────────────────────────────────────────────
+    for k, v in elementos.items():
+        if k.startswith("nota_"):
+            linhas.append(f"\n⚠️ NOTA — {k.replace('nota_','').upper()}: {v}")
+
+    elems = elementos.get("elementos", {})
+
+    # ── PORTAS ────────────────────────────────────────────────────────────────
+    portas = elems.get("IfcDoor", [])
+    if portas:
+        linhas.append(f"\n## PORTAS (IfcDoor) — {len(portas)} elementos")
+        for p in portas[:15]:
+            gid  = p.get("GlobalId","?")
+            nome = p.get("Name","?")
+            oh   = p.get("OverallHeight_m") or p.get("OverallHeight")
+            ow   = p.get("OverallWidth_m")  or p.get("OverallWidth")
+            h_str = f"{oh:.3f}m" if oh else "N/D"
+            w_str = f"{ow:.3f}m" if ow else "N/D"
+            linhas.append(f"  [{gid}] {nome} | Altura={h_str} | Largura={w_str}")
+        if len(portas) > 15:
+            # Estatísticas para portas além da amostra
+            larguras = [p.get("OverallWidth_m") or p.get("OverallWidth") for p in portas if p.get("OverallWidth_m") or p.get("OverallWidth")]
+            if larguras:
+                larguras_num = [float(l) for l in larguras if l]
+                linhas.append(f"  ... +{len(portas)-15} portas | Menor largura={min(larguras_num):.3f}m | Maior={max(larguras_num):.3f}m")
+
+    # ── ESCADAS ───────────────────────────────────────────────────────────────
+    escadas = elems.get("Escadas", [])
+    flights = [e for e in escadas if e.get("tipo_ifc") == "IfcStairFlight"]
+    stairs  = [e for e in escadas if e.get("tipo_ifc") == "IfcStair"]
+    if escadas:
+        linhas.append(f"\n## ESCADAS — {len(stairs)} IfcStair, {len(flights)} IfcStairFlight")
+        linhas.append("  ⚠️ RiserHeight e TreadLength já convertidos de pés para metros (×0.3048)")
+        for f in flights[:10]:
+            gid  = f.get("GlobalId","?")
+            nome = f.get("Name","?")
+            nr   = f.get("NumberOfRisers","?")
+            rh   = f.get("RiserHeight_m","?")
+            tl   = f.get("TreadLength_m","?")
+            dv   = f.get("desnivel_m","?")
+            linhas.append(f"  [{gid}] {nome}")
+            linhas.append(f"    Espelhos={nr} | Espelho={rh}m | Piso={tl}m | DESNÍVEL TOTAL={dv}m")
+    else:
+        linhas.append(f"\n## ESCADAS — nenhuma encontrada (IfcStair: {inv.get('IfcStair',0)}, IfcStairFlight: {inv.get('IfcStairFlight',0)})")
+
+    # ── RAMPAS ────────────────────────────────────────────────────────────────
+    rampas = elems.get("Rampas", [])
+    linhas.append(f"\n## RAMPAS — {len(rampas)} elementos")
+    if rampas:
+        for r in rampas[:5]:
+            gid  = r.get("GlobalId","?")
+            nome = r.get("Name","?")
+            rise = r.get("OverallRise_m","N/D")
+            run_ = r.get("OverallRun_m","N/D")
+            inc  = r.get("inclinacao_pct","?")
+            linhas.append(f"  [{gid}] {nome} | Rise={rise}m | Run={run_}m | Inclinação={inc}%")
+    else:
+        linhas.append("  Nenhuma rampa modelada (IfcRamp/IfcRampFlight ausentes)")
+
+    # ── CORRIMÕES ─────────────────────────────────────────────────────────────
+    corrimaos = elems.get("Corrimaos", [])
+    linhas.append(f"\n## CORRIMÕES / GUARDA-CORPOS (IfcRailing) — {len(corrimaos)} elementos")
+    for c in corrimaos[:8]:
+        gid  = c.get("GlobalId","?")
+        nome = c.get("Name","?")
+        tipo = c.get("tipo_elemento","?")
+        h    = c.get("Height_m","N/D")
+        linhas.append(f"  [{gid}] {nome} | Tipo={tipo} | Altura={h}")
+    if not corrimaos:
+        linhas.append("  Nenhum IfcRailing encontrado")
+
+    # ── SANITÁRIOS: BACIAS ───────────────────────────────────────────────────
+    bacias = elems.get("Bacias", [])
+    linhas.append(f"\n## BACIAS SANITÁRIAS (IfcFlowTerminal) — {len(bacias)} elementos")
+    for b in bacias[:8]:
+        gid  = b.get("GlobalId","?")
+        nome = b.get("Name","?")
+        mh   = b.get("MountingHeight_m","N/D")
+        linhas.append(f"  [{gid}] {nome} | MountingHeight={mh}")
+
+    # ── SANITÁRIOS: LAVATÓRIOS ───────────────────────────────────────────────
+    lavs = elems.get("Lavatorios", [])
+    linhas.append(f"\n## LAVATÓRIOS (IfcFlowTerminal) — {len(lavs)} elementos")
+    for lv in lavs[:8]:
+        gid  = lv.get("GlobalId","?")
+        nome = lv.get("Name","?")
+        mh   = lv.get("MountingHeight_m","N/D")
+        linhas.append(f"  [{gid}] {nome} | MountingHeight={mh}")
+
+    # ── SANITÁRIOS: BARRAS ───────────────────────────────────────────────────
+    barras = elems.get("BarrasApoio", [])
+    linhas.append(f"\n## BARRAS DE APOIO (IfcFlowTerminal) — {len(barras)} elementos")
+    for b in barras[:8]:
+        gid  = b.get("GlobalId","?")
+        nome = b.get("Name","?")
+        h    = b.get("MountingHeight_m","N/D")
+        linhas.append(f"  [{gid}] {nome} | Altura={h}")
+
+    # ── ESPAÇOS ───────────────────────────────────────────────────────────────
+    espacos = elems.get("IfcSpace", [])
+    linhas.append(f"\n## ESPAÇOS (IfcSpace) — {len(espacos)} elementos")
+    if not espacos:
+        linhas.append("  AUSENTE: modelo não exportou IfcSpace")
+        linhas.append("  Verificação de corredores (6.11.1) e giro de cadeira (7.5) requer análise manual")
+
+    # ── JANELAS ───────────────────────────────────────────────────────────────
+    janelas = elems.get("IfcWindow", [])
+    linhas.append(f"\n## JANELAS (IfcWindow) — {len(janelas)} elementos")
+    for j in janelas[:5]:
+        gid = j.get("GlobalId","?")
+        nome = j.get("Name","?")
+        sh = j.get("SillHeight_m","N/D")
+        h  = j.get("OverallHeight_m","N/D")
+        w  = j.get("OverallWidth_m","N/D")
+        linhas.append(f"  [{gid}] {nome} | SillHeight={sh} | H={h}m | W={w}m")
+
+    # ── PAREDES (fallback corredores) ─────────────────────────────────────────
+    paredes = elems.get("IfcWall_amostra", [])
+    if paredes:
+        linhas.append(f"\n## PAREDES — amostra ({len(paredes)} de {inv.get('IfcWall',0)+inv.get('IfcWallStandardCase',0)} total)")
+        linhas.append("  Use para estimar largura de corredores se IfcSpace ausente")
+        for p in paredes[:5]:
+            gid = p.get("GlobalId","?")
+            nome = p.get("Name","?")
+            w = p.get("Width_m","N/D")
+            l = p.get("Length_m","N/D")
+            linhas.append(f"  [{gid}] {nome} | Esp={w}m | Comp={l}m")
+
+    return "\n".join(linhas)
+
+
 def build_audit_prompt(elementos: dict, norma_items: list, modelo_nome: str) -> str:
     """
-    Constrói prompt de auditoria usando as regras da planilha NBR 9050.
-    Cada item tem: estratégia primária, fallback, e prompt especializado.
+    Constrói prompt de auditoria orientado a dados estruturados.
+    Em vez de JSON bruto, envia resumo legível por item.
     """
     schema = elementos.get("schema", "IFC2X3")
-    elementos_json = json.dumps(elementos, ensure_ascii=False, default=str)[:28000]
 
-    # Monta as regras — usa planilha se enviada, senão usa hardcoded
+    # Usa regras da planilha se disponível, senão hardcoded
     regras_uso = REGRAS_NBR9050
     if norma_items and len(norma_items) > 0 and "error" not in str(norma_items[0]):
-        # Tenta extrair as colunas relevantes da planilha enviada
         try:
             regras_planilha = []
             for row in norma_items:
                 item_nbr = str(row.get("Item NBR 9050", row.get("Item_NBR", ""))).strip()
-                subcat   = str(row.get("Subcategoria", "")).strip()
-                item_v   = str(row.get("Item Verificável", row.get("Item Verificable", ""))).strip()
-                classi   = str(row.get("Classificação", "")).strip()
-                ep       = str(row.get("Estratégia primária", "")).strip()
-                ef       = str(row.get("Estratégia de fallback", "")).strip()
                 prompt_r = str(row.get("Estrutura de Prompt para incluir no arquivo.json (regras do sistema)", "")).strip()
-                ent_p    = str(row.get("Entidade IFC (primária)", "")).strip()
-                ent_f    = str(row.get("Entidade IFC (alternativa / fallback)", "")).strip()
                 if item_nbr and item_nbr != "nan" and prompt_r and prompt_r != "nan":
                     regras_planilha.append({
-                        "item_nbr": item_nbr,
-                        "subcategoria": subcat,
-                        "item_verificavel": item_v,
-                        "classificacao": classi,
-                        "entidade_primaria": ent_p,
-                        "entidade_fallback": ent_f,
-                        "estrategia_primaria": ep,
-                        "estrategia_fallback": ef,
+                        "item_nbr":          item_nbr,
+                        "subcategoria":      str(row.get("Subcategoria","")).strip(),
+                        "item_verificavel":  str(row.get("Item Verificável","")).strip(),
+                        "classificacao":     str(row.get("Classificação","")).strip(),
+                        "entidade_primaria": str(row.get("Entidade IFC (primária)","")).strip(),
+                        "entidade_fallback": str(row.get("Entidade IFC (alternativa / fallback)","")).strip(),
+                        "estrategia_primaria": str(row.get("Estratégia primária","")).strip(),
+                        "estrategia_fallback": str(row.get("Estratégia de fallback","")).strip(),
                         "prompt": prompt_r,
                     })
             if regras_planilha:
                 regras_uso = regras_planilha
         except Exception:
-            pass  # Fallback para regras hardcoded
+            pass
 
-    # Monta bloco de instruções por item
-    instrucoes_por_item = ""
+    # Instruções por item
+    instrucoes = ""
     for r in regras_uso:
-        instrucoes_por_item += f"""
+        instrucoes += f"""
 ### Item {r['item_nbr']} — {r['subcategoria']}
-- **Verificação:** {r['item_verificavel']}
-- **Classificação:** {r['classificacao']}
-- **Entidade primária:** {r['entidade_primaria']}
-- **Entidade fallback:** {r['entidade_fallback']}
-- **Estratégia primária:** {r['estrategia_primaria']}
-- **Estratégia fallback:** {r['estrategia_fallback']}
-- **Instrução de auditoria:** {r['prompt']}
+Verificação: {r['item_verificavel']}
+Entidade primária: {r['entidade_primaria']} | Fallback: {r['entidade_fallback']}
+Estratégia primária: {r['estrategia_primaria']}
+Estratégia fallback: {r['estrategia_fallback']}
+Instrução: {r['prompt']}
 """
 
-    return f"""Você é um auditor especialista em acessibilidade arquitetônica e ABNT NBR 9050:2020.
+    # Resumo estruturado dos dados (substitui JSON bruto)
+    resumo_dados = _resumo_elementos(elementos)
 
-## MODELO IFC
-Nome: "{modelo_nome}" | Schema: {schema}
+    n = len(regras_uso)
+    return f"""Você é um auditor especialista em acessibilidade arquitetônica — ABNT NBR 9050:2020.
+Modelo: "{modelo_nome}" | Schema IFC: {schema}
 
-## REGRA FUNDAMENTAL
-Para CADA item abaixo, siga SEMPRE esta ordem:
-1. Tente localizar a **entidade primária** nos elementos fornecidos
-2. Se não encontrar, aplique a **estratégia de fallback** com a entidade alternativa
-3. Somente marque "Indeterminado" se AMBAS as estratégias falharem
-4. NUNCA omita um item — todos os {len(regras_uso)} itens devem ter resultado
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS OBRIGATÓRIAS DE AUDITORIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## INSTRUÇÕES POR ITEM (da planilha NBR 9050 TFM)
-{instrucoes_por_item}
+1. NUNCA retorne "Indeterminado" porque "não encontrou IfcSanitaryTerminal" — 
+   este modelo usa IfcFlowTerminal para TODOS os equipamentos sanitários.
+   As seções BACIAS, LAVATÓRIOS e BARRAS DE APOIO já estão classificadas para você.
 
-## ELEMENTOS EXTRAÍDOS DO MODELO IFC
-{elementos_json}
+2. Para ESCADAS: use o campo "desnivel_m" já calculado (NumberOfRisers × RiserHeight_m).
+   RiserHeight já está convertido de pés para metros. Desnível > 0,19m → corrimão obrigatório.
 
-## FORMATO DE RESPOSTA
-Responda SOMENTE com JSON válido, sem markdown, sem texto extra.
-Gere EXATAMENTE {len(regras_uso)} resultados — um por item acima.
-Para itens com múltiplos elementos (ex: 50 portas), agrupe em um único resultado representativo com o GlobalId do elemento mais crítico.
+3. Para CORREDORES sem IfcSpace: use a amostra de paredes para estimar distâncias,
+   ou marque "Indeterminado" com recomendação específica de adicionar IfcSpace.
+
+4. Para itens ausentes no modelo (ex: IfcWindow=0): retorne "N/A" com justificativa
+   clara de que o elemento não existe no modelo, não "Indeterminado".
+
+5. SEMPRE inclua o GlobalId do elemento mais representativo em cada resultado.
+
+6. Gere EXATAMENTE {n} resultados — um por item listado abaixo.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ITENS A VERIFICAR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{instrucoes}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DADOS DO MODELO IFC (use estes dados para verificar cada item acima)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{resumo_dados}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMATO DE RESPOSTA — JSON VÁLIDO, SEM MARKDOWN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {{
   "modelo": "{modelo_nome}",
@@ -814,29 +966,30 @@ Para itens com múltiplos elementos (ex: 50 portas), agrupe em um único resulta
   "data_auditoria": "{datetime.now().strftime('%d/%m/%Y')}",
   "resultados": [
     {{
-      "item_nbr": "6.11.2",
-      "categoria": "Portas",
-      "subcategoria": "Vão livre mínimo",
-      "elemento": "50 portas analisadas — pior caso: POR_01",
-      "globalid": "0yScVqI2LFdAHBnJsma8Hp",
-      "tipo_ifc": "IfcDoor",
-      "valor_encontrado": "0,78m × 2,10m (pior caso)",
-      "valor_exigido": "≥ 0,80m × 2,10m",
-      "status": "Não Conforme",
-      "recomendacao": "1 porta com largura 0,78m — ampliar para ≥ 0,80m."
+      "item_nbr": "5.4.3",
+      "categoria": "Escadas",
+      "subcategoria": "Corrimão",
+      "elemento": "92 lances de escada — desnível típico 2,83m",
+      "globalid": "0juK2FV415ofIzBp5eTKAv",
+      "tipo_ifc": "IfcStairFlight",
+      "valor_encontrado": "Desnível=2,83m > 0,19m; IfcRailing presentes como guarda-corpo, sem corrimão duplo confirmado",
+      "valor_exigido": "Corrimão em ambos os lados; alturas 0,70m e 0,92m",
+      "status": "Indeterminado",
+      "recomendacao": "Verificar se guarda-corpos modelados incluem corrimão nas alturas 0,70m e 0,92m."
     }}
   ],
   "resumo": {{
-    "total": {len(regras_uso)},
+    "total": {n},
     "conformes": 0,
     "nao_conformes": 0,
     "indeterminados": 0,
     "na": 0,
     "percentual_conformidade": "0%"
   }},
-  "observacoes_gerais": "Análise geral aqui..."
+  "observacoes_gerais": "Análise geral do modelo..."
 }}
 """
+
 
 
 def _parse_json_robusto(raw: str) -> dict:
