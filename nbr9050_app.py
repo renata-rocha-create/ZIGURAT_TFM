@@ -605,25 +605,40 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     # Classificação pelo Name (em português, com marca Deca/Celite/Bobrick)
 
     def get_z_placement(el):
-        """Extrai coordenada Z do placement do elemento — proxy da altura de instalação."""
+        """
+        Extrai coordenada Z RELATIVA ao pavimento — proxy da altura de instalação.
+        
+        Problema: projetos em coordenadas compartilhadas têm Z global ~700m+.
+        Solução: pega só o Z do nível IMEDIATO (RelativePlacement direto),
+        ignorando os níveis superiores (pavimento, edifício, terreno).
+        Valores plausíveis para equipamentos sanitários: 0.01m a 2.50m.
+        """
         try:
             placement = el.ObjectPlacement
-            while placement:
-                if hasattr(placement, "RelativePlacement"):
-                    rp = placement.RelativePlacement
-                    if hasattr(rp, "Location") and rp.Location:
-                        coords = rp.Location.Coordinates
-                        if coords and len(coords) >= 3:
-                            z = float(coords[2])
-                            if z > 0.01:  # ignora elementos no nível 0
-                                return round(z, 3)
-                placement = getattr(placement, "PlacementRelTo", None)
+            # Pega apenas o placement imediato (relativo ao pavimento)
+            if hasattr(placement, "RelativePlacement"):
+                rp = placement.RelativePlacement
+                if hasattr(rp, "Location") and rp.Location:
+                    coords = rp.Location.Coordinates
+                    if coords and len(coords) >= 3:
+                        z = float(coords[2])
+                        # Filtra: só valores plausíveis para altura de equipamento
+                        # (entre 1cm e 2,50m — exclui coordenadas globais absurdas)
+                        if 0.01 <= z <= 2.50:
+                            return round(z, 3)
         except Exception:
             pass
         return None
 
     TERMOS_BACIA    = ["bacia", "vaso", "toilet", "wc", "p.505", "vogue plus p", "caixa acoplada"]
-    TERMOS_LAVAT    = ["lavatório", "lavatorio", "lavat", "cuba", "pia", "sink", "basin", "l.510", "l.830", "l.733", "l.733"]
+    TERMOS_LAVAT    = [
+        "lavatório", "lavatorio", "lavat",
+        "cuba",          # cuba embutir, cuba semiencaixe → sem coluna → Conforme
+        "embutir",       # cuba retang. embutir → sem coluna
+        "semiencaixe",   # cuba-de-semiencaixe → sem coluna
+        "pia", "sink", "basin",
+        "l.510", "l.830", "l.733",
+    ]
     TERMOS_BARRA    = ["barra apoio", "grab bar", "barra de apoio", "2310.", "2335.", "apoio", "barra "]
     TERMOS_CHUVEIRO = ["chuveiro", "ducha", "shower", "1955", "registro"]
 
@@ -823,7 +838,7 @@ REGRAS_NBR9050 = [
         "entidade_fallback": "IfcFlowTerminal",
         "estrategia_primaria": "Extrair MountingHeight via Pset_SanitaryTerminalTypeCommon; verificar 0,43m ≤ altura ≤ 0,45m",
         "estrategia_fallback": "Calcular z máximo da geometria como proxy da borda superior",
-        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.7.2.1). Nos elementos fornecidos, localize IfcSanitaryTerminal ou IfcFlowTerminal com Name/ObjectType/Description contendo 'bacia', 'vaso', 'wc', 'toilet' ou 'sanitário'. Para cada um, extraia MountingHeight dos Psets. Verifique: 0,43m ≤ MountingHeight ≤ 0,45m → Conforme; fora do intervalo → Não Conforme; sem MountingHeight → Indeterminado. Inclua o GlobalId de cada elemento verificado.",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.7.2.1). Para cada IfcSanitaryTerminal ou IfcFlowTerminal identificado como bacia sanitária nos dados fornecidos (categoria_sanitario='bacia_sanitaria'), extraia MountingHeight_m dos Psets. Se ausente, use altura_estimada_m ou Z_placement_m — esses já estão em coordenadas RELATIVAS ao pavimento (valores plausíveis: 0,01m a 2,50m). Verifique: 0,43m ≤ altura ≤ 0,45m → Conforme; fora do intervalo → Não Conforme; sem nenhuma altura disponível → Indeterminado. Inclua o GlobalId de cada elemento.",
     },
     {
         "item_nbr": "7.7.1",
@@ -834,7 +849,7 @@ REGRAS_NBR9050 = [
         "entidade_fallback": "IfcBuildingElementProxy com 'vaso', 'bacia' ou 'WC'",
         "estrategia_primaria": "Identificar vaso dentro do IfcSpace; verificar espaço livre ≥ 0,80m × 1,20m ao lado",
         "estrategia_fallback": "Reconstruir polígono via IfcWall; buscar proxy com 'vaso', 'bacia' ou 'WC'",
-        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.7.1). Nos elementos fornecidos, localize IfcSanitaryTerminal ou IfcFlowTerminal identificados como vaso sanitário. Verifique se há IfcSpace associado que permita área de transferência lateral ≥ 0,80m × 1,20m. Se área do espaço > 2,5m² → provavelmente Conforme; < 1,5m² → provavelmente Não Conforme; sem dados espaciais → Indeterminado.",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.7.1). Nos dados fornecidos, localize os elementos com categoria_sanitario='bacia_sanitaria'. Verifique se há IfcSpace associado que permita área de transferência lateral ≥ 0,80m × 1,20m. Use os dados de largura_estimada_m e area_geometrica_m2 dos IfcSpace sanitários para estimar. Se área do espaço > 2,5m² → provavelmente Conforme; < 1,5m² → provavelmente Não Conforme; sem dados espaciais → Indeterminado.",
     },
     {
         "item_nbr": "4.6.6",
@@ -867,7 +882,7 @@ REGRAS_NBR9050 = [
         "entidade_fallback": "IfcFlowTerminal",
         "estrategia_primaria": "LLM classifica tipo via Name + ObjectType + Description",
         "estrategia_fallback": "Ambas as entidades são válidas para este item",
-        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.8). Nos elementos fornecidos, localize IfcSanitaryTerminal ou IfcFlowTerminal com 'lavatório', 'lavatorio', 'sink', 'basin', 'pia' no Name/Description. Classifique: 'suspenso', 'sem coluna' → Conforme; 'com coluna', 'pedestal' → Não Conforme; sem informação → Indeterminado. Inclua o GlobalId.",
+        "prompt": "Você é um verificador de conformidade NBR 9050:2020 (item 7.8). Nos dados fornecidos, localize elementos com categoria_sanitario='lavatorio'. Classifique pelo Name/ObjectType: 'suspenso', 'sem coluna', 'embutir', 'de embutir', 'semiencaixe', 'encaixe' → Conforme (instalação sem coluna, acesso frontal garantido); 'com coluna', 'pedestal', 'coluna suspensa' → Não Conforme; sem informação clara → Indeterminado. IMPORTANTE: 'cuba retang. embutir' e 'cuba-de-semiencaixe' são lavatórios SEM coluna → Conforme. Inclua o GlobalId.",
     },
 ]
 
@@ -1163,7 +1178,14 @@ REGRAS OBRIGATÓRIAS DE AUDITORIA
 
 5. SEMPRE inclua o GlobalId do elemento mais representativo em cada resultado.
 
-6. Gere EXATAMENTE {n} resultados — um por item listado abaixo.
+6. Z_placement_m e altura_estimada_m já estão em coordenadas RELATIVAS ao pavimento
+   (valores entre 0,01m e 2,50m). Valores como 722m ou 732m foram FILTRADOS.
+   Use esses campos para verificar alturas de bacias e barras de apoio.
+
+7. LAVATÓRIOS: "cuba embutir", "cuba retang. embutir", "cuba-de-semiencaixe" são
+   lavatórios SEM coluna → Conforme (item 7.8). "Coluna suspensa" → Não Conforme.
+
+8. Gere EXATAMENTE {n} resultados — um por item listado abaixo.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ITENS A VERIFICAR
@@ -2308,4 +2330,3 @@ with tab_ajuda:
     Verificação manual complementar é sempre recomendada.
     </div>
     """, unsafe_allow_html=True)
-
