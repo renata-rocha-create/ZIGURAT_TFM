@@ -261,8 +261,23 @@ hr { border-color: var(--border) !important; }
 /* ── Pulse ── */
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(68,205,148,0.4); } 50% { box-shadow: 0 0 0 8px rgba(68,205,148,0); } }
 
-/* ── Slider main content ── */
-.stSlider [data-baseweb="slider"] { background: var(--border) !important; }
+/* ── Botão CTA — verde vibrante com sombra quando habilitado ── */
+.stButton button {
+    background: var(--zk-green) !important; color: rgb(20,60,40) !important;
+    font-family: var(--font) !important; font-weight: 700 !important; font-size: 0.9rem !important;
+    border: none !important; border-radius: 6px !important; padding: 0.65rem 1.75rem !important;
+    transition: all 0.2s !important; letter-spacing: 0.02em !important;
+    box-shadow: 0 2px 8px rgba(68,205,148,0.35) !important;
+}
+.stButton button:hover {
+    background: var(--zk-blue) !important; color: #ffffff !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(28,96,241,0.35) !important;
+}
+.stButton button:disabled {
+    background: #e5e7eb !important; color: #9ca3af !important;
+    transform: none !important; box-shadow: none !important;
+}
 
 /* ════════════════════════════════════
    RODAPÉ — fundo BRANCO, borda escura
@@ -470,34 +485,151 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         f"Verifique se corrimões estão modelados junto às escadas ou ausentes."
     )
 
-    # ── 5. ESPAÇOS (6.11.1, 7.5) ─────────────────────────────────────────────
+    # ── 5. ESPAÇOS (6.11.1, 7.5) — análise geométrica real ───────────────────
     espacos = []
-    for el in ifc.by_type("IfcSpace"):
-        d = info_basica(el, "IfcSpace")
-        d["LongName"] = getattr(el, "LongName", None)
-        ps = todos_psets(el)
-        d["Psets"] = ps
-        d["Area_m2"] = buscar_prop(ps, "area", "grossarea", "netarea")
-        espacos.append(d)
-    resultado["elementos"]["IfcSpace"] = espacos
+    n_spaces = contar("IfcSpace")
+
+    if n_spaces > 0:
+        try:
+            import ifcopenshell.geom
+            import numpy as np
+            from shapely.geometry import MultiPoint, Point
+
+            geom_settings = ifcopenshell.geom.settings()
+            geom_settings.set(geom_settings.USE_WORLD_COORDS, True)
+
+            R_GIRO = 0.75  # raio da área de manobra NBR 9050 item 7.5
+
+            TERMOS_CORREDOR = ["corredor", "circulação", "circulacao", "hall",
+                               "acesso", "passagem", "lobby", "foyer", "vestíbulo"]
+            TERMOS_SANITARIO = ["banheiro", "sanitário", "sanitario", "wc",
+                                "lavabo", "toalete", "vestiário", "vestiario",
+                                "banho", "bath", "toilet"]
+
+            for el in ifc.by_type("IfcSpace"):
+                d = info_basica(el, "IfcSpace")
+                d["LongName"] = getattr(el, "LongName", None)
+                ps = todos_psets(el)
+                d["Psets"] = ps
+                d["Area_m2"] = buscar_prop(ps, "area", "grossarea", "netarea")
+
+                nome_completo = ((d.get("Name") or "") + " " + (d.get("LongName") or "")).lower()
+                d["tipo_ambiente"] = (
+                    "corredor" if any(t in nome_completo for t in TERMOS_CORREDOR)
+                    else "sanitario" if any(t in nome_completo for t in TERMOS_SANITARIO)
+                    else "outro"
+                )
+
+                # ── Análise geométrica com ifcopenshell.geom + Shapely ──
+                try:
+                    shape = ifcopenshell.geom.create_shape(geom_settings, el)
+                    verts = np.array(shape.geometry.verts).reshape(-1, 3)
+                    z_min = verts[:, 2].min()
+
+                    # Pontos do piso (tolerância 2cm)
+                    floor_pts = verts[np.abs(verts[:, 2] - z_min) < 0.02]
+
+                    if len(floor_pts) >= 3:
+                        hull = MultiPoint(floor_pts[:, :2]).convex_hull
+                        area_geom = round(hull.area, 3)
+                        d["area_geometrica_m2"] = area_geom
+
+                        # Bounding box para estimativa de largura (corredores)
+                        minx, miny, maxx, maxy = hull.bounds
+                        largura_bb  = round(min(maxx - minx, maxy - miny), 3)
+                        comprimento_bb = round(max(maxx - minx, maxy - miny), 3)
+                        d["largura_estimada_m"]    = largura_bb
+                        d["comprimento_estimado_m"] = comprimento_bb
+
+                        # Teste de giro ⌀ 1,50m (NBR 9050 item 7.5)
+                        cx, cy = hull.centroid.x, hull.centroid.y
+                        circle_centro = Point(cx, cy).buffer(R_GIRO, resolution=64)
+
+                        if hull.contains(circle_centro):
+                            d["giro_150_conforme"] = True
+                            d["giro_150_status"]   = "Conforme"
+                            d["giro_150_nota"]     = f"Círculo ⌀1,50m contido no polígono do ambiente (centróide)"
+                        else:
+                            # Tenta outras posições (canto, deslocado)
+                            encontrou = False
+                            for dx, dy in [(0.3, 0), (-0.3, 0), (0, 0.3), (0, -0.3),
+                                           (0.5, 0.5), (-0.5, 0.5), (0.5, -0.5), (-0.5, -0.5)]:
+                                circle_alt = Point(cx + dx, cy + dy).buffer(R_GIRO, resolution=64)
+                                if hull.contains(circle_alt):
+                                    encontrou = True
+                                    d["giro_150_conforme"] = True
+                                    d["giro_150_status"]   = "Conforme"
+                                    d["giro_150_nota"]     = f"Círculo ⌀1,50m contido (posição deslocada {dx},{dy}m do centróide)"
+                                    break
+                            if not encontrou:
+                                d["giro_150_conforme"] = False
+                                d["giro_150_status"]   = "Não Conforme"
+                                d["giro_150_nota"]     = (
+                                    f"Círculo ⌀1,50m NÃO cabe no polígono do ambiente. "
+                                    f"Área={area_geom:.2f}m² | Largura≈{largura_bb:.2f}m. "
+                                    f"Mín. necessário: ⌀1,50m livre de obstruções."
+                                )
+                    else:
+                        d["giro_150_status"] = "Indeterminado"
+                        d["giro_150_nota"]   = "Geometria insuficiente para análise"
+
+                except Exception as e_geom:
+                    d["giro_150_status"] = "Indeterminado"
+                    d["giro_150_nota"]   = f"Erro na extração geométrica: {str(e_geom)[:80]}"
+
+                espacos.append(d)
+
+        except ImportError:
+            # Shapely ou ifcopenshell.geom não disponível — fallback básico
+            for el in ifc.by_type("IfcSpace"):
+                d = info_basica(el, "IfcSpace")
+                d["LongName"] = getattr(el, "LongName", None)
+                ps = todos_psets(el)
+                d["Psets"] = ps
+                d["Area_m2"] = buscar_prop(ps, "area", "grossarea", "netarea")
+                d["giro_150_status"] = "Indeterminado"
+                d["giro_150_nota"]   = "Shapely não disponível — instale: pip install shapely"
+                espacos.append(d)
+
+    resultado["elementos"]["IfcSpace"] = espacos[:40]
     resultado["nota_espacos"] = (
-        f"Modelo tem {contar('IfcSpace')} IfcSpace. "
-        + ("AUSENTE: não é possível verificar largura de corredores (6.11.1) nem giro de cadeira (7.5) sem IfcSpace." if contar("IfcSpace") == 0 else "")
+        f"Modelo tem {n_spaces} IfcSpace. "
+        + (f"Analisados geometricamente: {len(espacos)} espaços com teste de giro ⌀1,50m via Shapely."
+           if n_spaces > 0
+           else "AUSENTE: não é possível verificar largura de corredores (6.11.1) nem giro de cadeira (7.5) sem IfcSpace. "
+                "Recomenda-se exportar Rooms do Revit como IfcSpace com opção 'Export Rooms as IfcSpace'.")
     )
 
     # ── 6. SANITÁRIOS — classificados por tipo (7.7.2.1, 7.7.1, 7.8, 7.6-7.8) ─
     # IfcFlowTerminal no Revit IFC2X3 contém TUDO: bacias, lavatórios, barras, torneiras
     # Classificação pelo Name (em português, com marca Deca/Celite/Bobrick)
-    
-    TERMOS_BACIA   = ["bacia", "vaso", "toilet", "wc", "p.505", "vogue plus p"]
-    TERMOS_LAVAT   = ["lavatório", "lavatorio", "lavat", "cuba", "pia", "sink", "basin", "l.510", "l.830", "l.733"]
-    TERMOS_BARRA   = ["barra apoio", "grab bar", "barra de apoio", "2310.", "2335.", "apoio"]
-    TERMOS_CHUVEIRO= ["chuveiro", "ducha", "shower", "1955", "registro"]
-    TERMOS_OUTROS  = ["torneira", "dispenser", "papel", "cadeira de banho", "válvula", "sifão", "coluna"]
 
-    bacias = []
+    def get_z_placement(el):
+        """Extrai coordenada Z do placement do elemento — proxy da altura de instalação."""
+        try:
+            placement = el.ObjectPlacement
+            while placement:
+                if hasattr(placement, "RelativePlacement"):
+                    rp = placement.RelativePlacement
+                    if hasattr(rp, "Location") and rp.Location:
+                        coords = rp.Location.Coordinates
+                        if coords and len(coords) >= 3:
+                            z = float(coords[2])
+                            if z > 0.01:  # ignora elementos no nível 0
+                                return round(z, 3)
+                placement = getattr(placement, "PlacementRelTo", None)
+        except Exception:
+            pass
+        return None
+
+    TERMOS_BACIA    = ["bacia", "vaso", "toilet", "wc", "p.505", "vogue plus p", "caixa acoplada"]
+    TERMOS_LAVAT    = ["lavatório", "lavatorio", "lavat", "cuba", "pia", "sink", "basin", "l.510", "l.830", "l.733", "l.733"]
+    TERMOS_BARRA    = ["barra apoio", "grab bar", "barra de apoio", "2310.", "2335.", "apoio", "barra "]
+    TERMOS_CHUVEIRO = ["chuveiro", "ducha", "shower", "1955", "registro"]
+
+    bacias    = []
     lavatórios = []
-    barras = []
+    barras    = []
     outros_san = []
 
     for el in ifc.by_type("IfcFlowTerminal"):
@@ -508,7 +640,17 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         d = info_basica(el, "IfcFlowTerminal")
         ps = todos_psets(el)
         d["Psets"] = ps
-        d["MountingHeight_m"] = buscar_prop(ps, "mountingheight", "height", "altura", "mounting")
+
+        # MountingHeight via Psets
+        mh = buscar_prop(ps, "mountingheight", "mounting", "instalacao", "installation")
+        d["MountingHeight_m"] = mh
+
+        # Z do placement como fallback de altura
+        z = get_z_placement(el)
+        if z:
+            d["Z_placement_m"] = z
+            if not mh:
+                d["altura_estimada_m"] = z  # proxy para o LLM usar
 
         if any(t in texto for t in TERMOS_BACIA):
             d["categoria_sanitario"] = "bacia_sanitaria"
@@ -771,22 +913,34 @@ def _resumo_elementos(elementos: dict) -> str:
 
     # ── ESCADAS ───────────────────────────────────────────────────────────────
     escadas = elems.get("Escadas", [])
-    flights = [e for e in escadas if e.get("tipo_ifc") == "IfcStairFlight"]
-    stairs  = [e for e in escadas if e.get("tipo_ifc") == "IfcStair"]
-    if escadas:
-        linhas.append(f"\n## ESCADAS — {len(stairs)} IfcStair, {len(flights)} IfcStairFlight")
-        linhas.append("  ⚠️ RiserHeight e TreadLength já convertidos de pés para metros (×0.3048)")
-        for f in flights[:10]:
+    # Filtro robusto — tipo_ifc pode estar em chaves diferentes
+    flights = [e for e in escadas if "StairFlight" in str(e.get("tipo_ifc",""))]
+    stairs  = [e for e in escadas if e.get("tipo_ifc","") == "IfcStair"]
+    linhas.append(f"\n## ESCADAS — {len(stairs)} IfcStair, {len(flights)} IfcStairFlight")
+    if flights:
+        linhas.append("  ⚠️ IMPORTANTE: RiserHeight_m e TreadLength_m já convertidos de pés→metros (×0.3048)")
+        linhas.append("  Use desnivel_m = NumberOfRisers × RiserHeight_m para calcular desnível total")
+        for f in flights[:12]:
             gid  = f.get("GlobalId","?")
-            nome = f.get("Name","?")
-            nr   = f.get("NumberOfRisers","?")
-            rh   = f.get("RiserHeight_m","?")
-            tl   = f.get("TreadLength_m","?")
-            dv   = f.get("desnivel_m","?")
+            nome = (f.get("Name","") or "?")[:50]
+            nr   = f.get("NumberOfRisers")
+            rh   = f.get("RiserHeight_m")
+            tl   = f.get("TreadLength_m")
+            dv   = f.get("desnivel_m")
+            # Formata com valores reais ou indica ausência
+            nr_s = str(int(nr)) if nr else "N/D"
+            rh_s = f"{float(rh):.4f}m" if rh else "N/D"
+            tl_s = f"{float(tl):.4f}m" if tl else "N/D"
+            dv_s = f"{float(dv):.3f}m" if dv else "N/D"
             linhas.append(f"  [{gid}] {nome}")
-            linhas.append(f"    Espelhos={nr} | Espelho={rh}m | Piso={tl}m | DESNÍVEL TOTAL={dv}m")
+            linhas.append(f"    NumberOfRisers={nr_s} | RiserHeight_m={rh_s} | TreadLength_m={tl_s} | desnivel_m={dv_s}")
+        # Resumo estatístico
+        desniveis = [float(f["desnivel_m"]) for f in flights if f.get("desnivel_m")]
+        if desniveis:
+            linhas.append(f"  RESUMO: desnível mín={min(desniveis):.3f}m | máx={max(desniveis):.3f}m | médio={sum(desniveis)/len(desniveis):.3f}m")
+            linhas.append(f"  Todos os {len([d for d in desniveis if d > 0.19])} lances com desnível > 0,19m REQUEREM corrimão.")
     else:
-        linhas.append(f"\n## ESCADAS — nenhuma encontrada (IfcStair: {inv.get('IfcStair',0)}, IfcStairFlight: {inv.get('IfcStairFlight',0)})")
+        linhas.append(f"  Nenhum IfcStairFlight com dados — IfcStair no inventário: {inv.get('IfcStair',0)}, IfcStairFlight: {inv.get('IfcStairFlight',0)}")
 
     # ── RAMPAS ────────────────────────────────────────────────────────────────
     rampas = elems.get("Rampas", [])
@@ -817,36 +971,101 @@ def _resumo_elementos(elementos: dict) -> str:
     # ── SANITÁRIOS: BACIAS ───────────────────────────────────────────────────
     bacias = elems.get("Bacias", [])
     linhas.append(f"\n## BACIAS SANITÁRIAS (IfcFlowTerminal) — {len(bacias)} elementos")
-    for b in bacias[:8]:
+    linhas.append("  VERIFICAR: MountingHeight (Pset) | Z_placement (coordenada Z do modelo) | altura_estimada")
+    for b in bacias[:10]:
         gid  = b.get("GlobalId","?")
-        nome = b.get("Name","?")
-        mh   = b.get("MountingHeight_m","N/D")
-        linhas.append(f"  [{gid}] {nome} | MountingHeight={mh}")
+        nome = (b.get("Name","") or "?")[:55]
+        mh   = b.get("MountingHeight_m","—")
+        z    = b.get("Z_placement_m","—")
+        alt  = b.get("altura_estimada_m","—")
+        linhas.append(f"  [{gid}] {nome}")
+        linhas.append(f"    MountingHeight={mh} | Z_placement={z}m | altura_estimada={alt}m")
+    if bacias:
+        linhas.append(f"  NBR 9050 item 7.7.2.1: altura bacia deve ser 0,43m ≤ h ≤ 0,45m (sem assento)")
 
     # ── SANITÁRIOS: LAVATÓRIOS ───────────────────────────────────────────────
     lavs = elems.get("Lavatorios", [])
     linhas.append(f"\n## LAVATÓRIOS (IfcFlowTerminal) — {len(lavs)} elementos")
     for lv in lavs[:8]:
         gid  = lv.get("GlobalId","?")
-        nome = lv.get("Name","?")
-        mh   = lv.get("MountingHeight_m","N/D")
-        linhas.append(f"  [{gid}] {nome} | MountingHeight={mh}")
+        nome = (lv.get("Name","") or "?")[:55]
+        mh   = lv.get("MountingHeight_m","—")
+        z    = lv.get("Z_placement_m","—")
+        linhas.append(f"  [{gid}] {nome} | MountingHeight={mh} | Z={z}m")
 
     # ── SANITÁRIOS: BARRAS ───────────────────────────────────────────────────
     barras = elems.get("BarrasApoio", [])
     linhas.append(f"\n## BARRAS DE APOIO (IfcFlowTerminal) — {len(barras)} elementos")
-    for b in barras[:8]:
+    linhas.append("  NBR 9050 item 7.6-7.8: altura instalação ~0,75m | resistência mín 150 kgf")
+    for b in barras[:10]:
         gid  = b.get("GlobalId","?")
-        nome = b.get("Name","?")
-        h    = b.get("MountingHeight_m","N/D")
-        linhas.append(f"  [{gid}] {nome} | Altura={h}")
+        nome = (b.get("Name","") or "?")[:55]
+        mh   = b.get("MountingHeight_m","—")
+        z    = b.get("Z_placement_m","—")
+        alt  = b.get("altura_estimada_m","—")
+        linhas.append(f"  [{gid}] {nome}")
+        linhas.append(f"    MountingHeight={mh} | Z_placement={z}m | altura_estimada={alt}m")
 
     # ── ESPAÇOS ───────────────────────────────────────────────────────────────
     espacos = elems.get("IfcSpace", [])
-    linhas.append(f"\n## ESPAÇOS (IfcSpace) — {len(espacos)} elementos")
+    n_total = len(espacos)
+    linhas.append(f"\n## ESPAÇOS (IfcSpace) — {n_total} elementos")
     if not espacos:
         linhas.append("  AUSENTE: modelo não exportou IfcSpace")
-        linhas.append("  Verificação de corredores (6.11.1) e giro de cadeira (7.5) requer análise manual")
+        linhas.append("  → Corredores (6.11.1) e giro cadeira de rodas (7.5): Indeterminado")
+        linhas.append("  → Para habilitar: exportar Rooms do Revit como IfcSpace")
+    else:
+        # Separa por tipo
+        corredores  = [e for e in espacos if e.get("tipo_ambiente") == "corredor"]
+        sanitarios_s = [e for e in espacos if e.get("tipo_ambiente") == "sanitario"]
+        outros      = [e for e in espacos if e.get("tipo_ambiente") == "outro"]
+
+        linhas.append(f"  Corredores: {len(corredores)} | Sanitários: {len(sanitarios_s)} | Outros: {len(outros)}")
+
+        # Resultados de giro por status
+        conformes_giro  = [e for e in espacos if e.get("giro_150_status") == "Conforme"]
+        nconf_giro      = [e for e in espacos if e.get("giro_150_status") == "Não Conforme"]
+        indet_giro      = [e for e in espacos if e.get("giro_150_status") == "Indeterminado"]
+
+        linhas.append(f"\n  TESTE GIRO ⌀1,50m (NBR 9050 item 7.5) — via Shapely:")
+        linhas.append(f"  ✅ Conformes: {len(conformes_giro)} | ❌ Não Conformes: {len(nconf_giro)} | ⚠️ Indeterminados: {len(indet_giro)}")
+
+        # Detalha sanitários
+        if sanitarios_s:
+            linhas.append(f"\n  SANITÁRIOS ACESSÍVEIS:")
+            for e in sanitarios_s[:10]:
+                gid  = e.get("GlobalId","?")
+                nome = (e.get("Name","") or (e.get("LongName","") or "?"))[:40]
+                area = e.get("area_geometrica_m2") or e.get("Area_m2","N/D")
+                larg = e.get("largura_estimada_m","N/D")
+                giro = e.get("giro_150_status","?")
+                nota = e.get("giro_150_nota","")
+                linhas.append(f"  [{gid}] {nome}")
+                linhas.append(f"    Área={area}m² | Largura≈{larg}m | Giro⌀1,50m={giro}")
+                if nota:
+                    linhas.append(f"    Nota: {nota}")
+
+        # Detalha corredores
+        if corredores:
+            linhas.append(f"\n  CORREDORES (item 6.11.1 — largura mín por comprimento):")
+            for e in corredores[:10]:
+                gid  = e.get("GlobalId","?")
+                nome = (e.get("Name","") or (e.get("LongName","") or "?"))[:40]
+                larg = e.get("largura_estimada_m","N/D")
+                comp = e.get("comprimento_estimado_m","N/D")
+                # Aplica regra NBR 9050 6.11.1
+                if isinstance(larg, (int,float)) and isinstance(comp, (int,float)):
+                    if comp <= 4.0:
+                        limite = 0.90; regra = "≤4m → mín 0,90m"
+                    elif comp <= 10.0:
+                        limite = 1.20; regra = "≤10m → mín 1,20m"
+                    else:
+                        limite = 1.50; regra = ">10m → mín 1,50m"
+                    status_corredor = "Conforme" if larg >= limite else "Não Conforme"
+                    linhas.append(f"  [{gid}] {nome}")
+                    linhas.append(f"    Largura={larg}m | Comp={comp}m | Regra: {regra} | Status: {status_corredor}")
+                else:
+                    linhas.append(f"  [{gid}] {nome} | Largura={larg}m | Comp={comp}m")
 
     # ── JANELAS ───────────────────────────────────────────────────────────────
     janelas = elems.get("IfcWindow", [])
@@ -1507,16 +1726,36 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.markdown("**🔑 Provedor de IA**")
+    st.markdown("""
+    <div style="font-family:'Trebuchet MS',sans-serif;font-size:0.7rem;font-weight:700;
+                color:rgb(77,83,99);text-transform:uppercase;letter-spacing:0.1em;
+                margin-bottom:0.5rem">
+      ⚙️ Configuração
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("**Provedor de IA**")
     provider = st.selectbox("Provedor", ["Anthropic (Claude)", "Google (Gemini)"], label_visibility="collapsed")
 
+    st.markdown("""
+    <div style="font-family:'Trebuchet MS',sans-serif;font-size:0.78rem;font-weight:600;
+                color:#1a1d26;margin-bottom:2px">
+      🔑 Chave API
+    </div>
+    <div style="font-family:'Trebuchet MS',sans-serif;font-size:0.65rem;color:#6b7280;
+                margin-bottom:4px">
+      Não armazenada • Apenas nesta sessão
+    </div>
+    """, unsafe_allow_html=True)
     api_key = st.text_input(
         "Chave API",
         type="password",
         placeholder="sk-ant-..." if "Anthropic" in provider else "AIza...",
-        help="Sua chave de API. Não é armazenada."
+        help="Sua chave de API. Não é armazenada nem enviada a terceiros.",
+        label_visibility="collapsed"
     )
 
-    st.markdown("**🤖 Modelo**")
+    st.markdown("**🤖 Modelo LLM**")
     if "Anthropic" in provider:
         model_options = [
             "claude-haiku-4-5",
@@ -1546,17 +1785,25 @@ with st.sidebar:
     temperature = 0.0  # Fixo em 0.0 — determinístico para auditoria normativa
 
     st.markdown("---")
-    st.markdown("""
-    <div style="font-family:'Trebuchet MS',Trebuchet,sans-serif;font-size:0.62rem;color:rgb(77,83,99);padding-top:0.25rem;line-height:1.7">
-      <div style="color:rgb(68,205,148);font-weight:700;font-size:0.68rem;margin-bottom:0.2rem">TFM | Grupo 1</div>
-      Kevin Dias Quintian<br>
-      Renata Gomes Rocha<br>
-      Sergio Rosenboim<br>
-      Viviane Nishizaki Suzuke<br>
-      William Felipe dos Santos Moura<br>
-      <div style="margin-top:0.5rem;color:rgb(77,83,99,0.5);font-size:0.6rem">Master IA para AEC &middot; Zigurat</div>
-    </div>
-    """, unsafe_allow_html=True)
+
+    with st.expander("ℹ️ Sobre o projeto", expanded=False):
+        st.markdown("""
+        <div style="font-family:'Trebuchet MS',sans-serif;font-size:0.65rem;
+                    color:rgb(77,83,99);line-height:1.8">
+          <div style="color:rgb(68,205,148);font-weight:700;font-size:0.7rem;
+                      margin-bottom:0.4rem">TFM | Grupo 1</div>
+          Kevin Dias Quintian<br>
+          Renata Gomes Rocha<br>
+          Sergio Rosenboim<br>
+          Viviane Nishizaki Suzuke<br>
+          William Felipe dos Santos Moura
+          <div style="margin-top:0.6rem;padding-top:0.5rem;
+                      border-top:1px solid var(--border);
+                      color:#6b7280;font-size:0.6rem">
+            Master IA para AEC &middot; Zigurat Institute of Technology
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1566,7 +1813,11 @@ st.markdown("""
 <div class="hero-block">
   <div class="hero-left">
     <div class="hero-title">&#9855; Auditor de Acessibilidade BIM</div>
-    <div class="hero-sub">Verificação Automatizada de Conformidade &nbsp;·&nbsp; ABNT NBR 9050:2020 &nbsp;·&nbsp; Powered by IA</div>
+    <div class="hero-sub">
+      Verificação Automatizada de Conformidade &nbsp;·&nbsp;
+      <strong style="color:rgba(255,255,255,0.8)">ABNT NBR 9050:2020</strong> &nbsp;·&nbsp;
+      Powered by IA
+    </div>
   </div>
   <img src="https://www.e-zigurat.com/images/logo.svg"
        style="height:36px;flex-shrink:0"
@@ -1579,10 +1830,76 @@ tab_upload, tab_resultado, tab_ajuda = st.tabs(["📁 Arquivos & Execução", "�
 
 # ─────────────────────────────────────────────
 with tab_upload:
-    col1, col2 = st.columns([1, 1], gap="large")
+
+    # ── Stepper de fluxo ─────────────────────────────────────────────────────
+    step1 = "done" if api_key else "active"
+    step2 = "done" if (api_key and ifc_file) else ("active" if api_key else "pending")
+    step3 = "done" if (api_key and ifc_file and xlsx_file) else ("active" if (api_key and ifc_file) else "pending")
+    step4 = "active" if (api_key and ifc_file) else "pending"
+
+    def step_dot(state, n):
+        colors = {"done": "rgb(68,205,148)", "active": "rgb(28,96,241)", "pending": "#d1d5de"}
+        text_c = {"done": "#fff", "active": "#fff", "pending": "#9ca3af"}
+        icon   = {"done": "✓", "active": str(n), "pending": str(n)}
+        pulse  = 'animation:pulse 1.5s infinite' if state == "active" else ""
+        return f"""<div style="width:28px;height:28px;border-radius:50%;
+                    background:{colors[state]};color:{text_c[state]};
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:0.72rem;font-weight:700;flex-shrink:0;{pulse}">
+                    {icon[state]}</div>"""
+
+    def step_label(label, sublabel, state):
+        c = "rgb(28,96,241)" if state == "done" else ("#1a1d26" if state == "active" else "#9ca3af")
+        return f"""<div>
+          <div style="font-size:0.8rem;font-weight:700;color:{c}">{label}</div>
+          <div style="font-size:0.65rem;color:#6b7280">{sublabel}</div>
+        </div>"""
+
+    arrow = '<div style="color:#d1d5de;font-size:0.9rem;padding:0 4px">→</div>'
+
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:6px;padding:1rem 1.25rem;
+                background:#f4f6f9;border:1px solid #e5e7eb;border-radius:8px;
+                margin-bottom:1.5rem;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        {step_dot(step1,1)}
+        {step_label("API Key","Provedor + chave",step1)}
+      </div>
+      {arrow}
+      <div style="display:flex;align-items:center;gap:8px">
+        {step_dot(step2,2)}
+        {step_label("Modelo IFC","Arquivo .ifc obrigatório",step2)}
+      </div>
+      {arrow}
+      <div style="display:flex;align-items:center;gap:8px">
+        {step_dot(step3,3)}
+        {step_label("Checklist","Planilha NBR (opcional)",step3)}
+      </div>
+      {arrow}
+      <div style="display:flex;align-items:center;gap:8px">
+        {step_dot(step4,4)}
+        {step_label("Executar","Iniciar auditoria",step4)}
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Upload cards com hierarquia visual ───────────────────────────────────
+    col1, col2 = st.columns([3, 2], gap="large")
 
     with col1:
-        st.markdown('<div class="section-title">📐 Modelo BIM</div>', unsafe_allow_html=True)
+        # Card primário — IFC (mais destaque)
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+          <div class="section-title" style="margin:0">📐 Modelo BIM</div>
+          <span style="background:rgb(28,96,241);color:#fff;font-size:0.6rem;
+                       font-weight:700;padding:2px 8px;border-radius:10px;
+                       letter-spacing:0.05em">OBRIGATÓRIO</span>
+        </div>
+        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
+          Arquivo IFC exportado do Revit, ArchiCAD ou Vectorworks.
+          Suporta schemas <strong>IFC2X3</strong> e <strong>IFC4</strong>.
+        </div>
+        """, unsafe_allow_html=True)
         ifc_file = st.file_uploader(
             "Arquivo IFC",
             type=["ifc"],
@@ -1591,15 +1908,29 @@ with tab_upload:
         )
         if ifc_file:
             st.markdown(f"""
-            <div class="info-box">
-            ✅ <strong>{ifc_file.name}</strong><br>
-            <span style="font-family:'Courier New',monospace;font-size:0.72rem">
-            Tamanho: {ifc_file.size / 1024 / 1024:.1f} MB
-            </span>
+            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
+                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
+                        font-size:0.8rem">
+              ✅ <strong>{ifc_file.name}</strong>
+              <span style="font-family:'Courier New',monospace;color:#6b7280;font-size:0.72rem;margin-left:8px">
+                {ifc_file.size / 1024 / 1024:.1f} MB
+              </span>
             </div>""", unsafe_allow_html=True)
 
     with col2:
-        st.markdown('<div class="section-title">📋 Norma / Checklist</div>', unsafe_allow_html=True)
+        # Card secundário — XLSX (menos destaque)
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+          <div class="section-title" style="margin:0;color:#6b7280">📋 Checklist NBR</div>
+          <span style="background:#f4f6f9;color:#6b7280;font-size:0.6rem;
+                       font-weight:700;padding:2px 8px;border-radius:10px;
+                       border:1px solid #d1d5de;letter-spacing:0.05em">OPCIONAL</span>
+        </div>
+        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
+          Planilha com estratégias e prompts personalizados.
+          Sem ela, usa os <strong>12 itens padrão</strong>.
+        </div>
+        """, unsafe_allow_html=True)
         xlsx_file = st.file_uploader(
             "Planilha NBR 9050 (opcional)",
             type=["xlsx", "xls"],
@@ -1608,23 +1939,33 @@ with tab_upload:
         )
         if xlsx_file:
             st.markdown(f"""
-            <div class="info-box">
-            ✅ <strong>{xlsx_file.name}</strong> carregada.
+            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
+                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
+                        font-size:0.8rem">
+              ✅ <strong>{xlsx_file.name}</strong>
             </div>""", unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div class="warn-box">
-            📋 Nenhuma planilha carregada — serão usados os <strong>12 itens padrão</strong> da NBR 9050:2020.
+            <div style="background:#fafafa;border:1px dashed #d1d5de;border-radius:6px;
+                        padding:0.6rem 0.85rem;margin-top:0.5rem;font-size:0.75rem;color:#9ca3af">
+              Usando 12 itens padrão da NBR 9050:2020
             </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # Run button
+    # ── Run button ─────────────────────────────────────────────────────────
     can_run = bool(ifc_file and api_key)
-    if not api_key:
-        st.markdown('<div class="warn-box">⚠️ Insira sua chave API na barra lateral para prosseguir.</div>', unsafe_allow_html=True)
-    if not ifc_file:
-        st.markdown('<div class="warn-box">⚠️ Carregue um arquivo IFC para prosseguir.</div>', unsafe_allow_html=True)
+
+    # Mensagens de estado inline (sem warn-box solta)
+    if not api_key and not ifc_file:
+        st.markdown("""
+        <div class="info-box">
+          Complete os passos <strong>① e ②</strong> na barra lateral e acima para habilitar a auditoria.
+        </div>""", unsafe_allow_html=True)
+    elif not api_key:
+        st.markdown('<div class="warn-box">⚠️ Passo ① — Insira sua chave API na barra lateral.</div>', unsafe_allow_html=True)
+    elif not ifc_file:
+        st.markdown('<div class="warn-box">⚠️ Passo ② — Carregue um arquivo IFC acima.</div>', unsafe_allow_html=True)
 
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
@@ -1971,3 +2312,4 @@ with tab_ajuda:
     Verificação manual complementar é sempre recomendada.
     </div>
     """, unsafe_allow_html=True)
+
