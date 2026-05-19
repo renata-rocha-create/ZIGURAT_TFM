@@ -1785,25 +1785,24 @@ with st.sidebar:
     temperature = 0.0  # Fixo em 0.0 — determinístico para auditoria normativa
 
     st.markdown("---")
-
-    with st.expander("ℹ️ Sobre o projeto", expanded=False):
-        st.markdown("""
-        <div style="font-family:'Trebuchet MS',sans-serif;font-size:0.65rem;
-                    color:rgb(77,83,99);line-height:1.8">
-          <div style="color:rgb(68,205,148);font-weight:700;font-size:0.7rem;
-                      margin-bottom:0.4rem">TFM | Grupo 1</div>
-          Kevin Dias Quintian<br>
-          Renata Gomes Rocha<br>
-          Sergio Rosenboim<br>
-          Viviane Nishizaki Suzuke<br>
-          William Felipe dos Santos Moura
-          <div style="margin-top:0.6rem;padding-top:0.5rem;
-                      border-top:1px solid var(--border);
-                      color:#6b7280;font-size:0.6rem">
-            Master IA para AEC &middot; Zigurat Institute of Technology
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <div style="font-family:'Trebuchet MS',sans-serif;padding-top:0.25rem;line-height:1.8">
+      <div style="color:rgb(68,205,148);font-weight:700;font-size:0.72rem;
+                  margin-bottom:0.4rem;letter-spacing:0.05em">TFM | Grupo 1</div>
+      <div style="font-size:0.65rem;color:rgb(77,83,99)">
+        Kevin Dias Quintian<br>
+        Renata Gomes Rocha<br>
+        Sergio Rosenboim<br>
+        Viviane Nishizaki Suzuke<br>
+        William Felipe dos Santos Moura
+      </div>
+      <div style="margin-top:0.6rem;padding-top:0.5rem;
+                  border-top:1px solid var(--border);
+                  color:#9ca3af;font-size:0.6rem">
+        Master IA para AEC &middot; Zigurat Institute of Technology
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1815,8 +1814,7 @@ st.markdown("""
     <div class="hero-title">&#9855; Auditor de Acessibilidade BIM</div>
     <div class="hero-sub">
       Verificação Automatizada de Conformidade &nbsp;·&nbsp;
-      <strong style="color:rgba(255,255,255,0.8)">ABNT NBR 9050:2020</strong> &nbsp;·&nbsp;
-      Powered by IA
+      <strong style="color:rgba(255,255,255,0.85)">ABNT NBR 9050:2020</strong>
     </div>
   </div>
   <img src="https://www.e-zigurat.com/images/logo.svg"
@@ -1831,7 +1829,75 @@ tab_upload, tab_resultado, tab_ajuda = st.tabs(["📁 Arquivos & Execução", "�
 # ─────────────────────────────────────────────
 with tab_upload:
 
-    # ── Stepper de fluxo ─────────────────────────────────────────────────────
+    # ── Upload cards PRIMEIRO (antes do stepper, para definir ifc_file e xlsx_file) ──
+    col1, col2 = st.columns([3, 2], gap="large")
+
+    with col1:
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+          <div class="section-title" style="margin:0">📐 Modelo BIM</div>
+          <span style="background:rgb(28,96,241);color:#fff;font-size:0.6rem;
+                       font-weight:700;padding:2px 8px;border-radius:10px;
+                       letter-spacing:0.05em">OBRIGATÓRIO</span>
+        </div>
+        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
+          Arquivo IFC exportado do Revit, ArchiCAD ou Vectorworks.
+          Suporta schemas <strong>IFC2X3</strong> e <strong>IFC4</strong>.
+        </div>
+        """, unsafe_allow_html=True)
+        ifc_file = st.file_uploader(
+            "Arquivo IFC",
+            type=["ifc"],
+            help="Formato IFC2X3 ou IFC4. Exportado via Revit, ArchiCAD, Vectorworks etc.",
+            label_visibility="collapsed"
+        )
+        if ifc_file:
+            st.markdown(f"""
+            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
+                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
+                        font-size:0.8rem">
+              ✅ <strong>{ifc_file.name}</strong>
+              <span style="font-family:'Courier New',monospace;color:#6b7280;font-size:0.72rem;margin-left:8px">
+                {ifc_file.size / 1024 / 1024:.1f} MB
+              </span>
+            </div>""", unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+          <div class="section-title" style="margin:0;color:#6b7280">📋 Checklist NBR</div>
+          <span style="background:#f4f6f9;color:#6b7280;font-size:0.6rem;
+                       font-weight:700;padding:2px 8px;border-radius:10px;
+                       border:1px solid #d1d5de;letter-spacing:0.05em">OPCIONAL</span>
+        </div>
+        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
+          Planilha com estratégias e prompts personalizados.
+          Sem ela, usa os <strong>12 itens padrão</strong>.
+        </div>
+        """, unsafe_allow_html=True)
+        xlsx_file = st.file_uploader(
+            "Planilha NBR 9050 (opcional)",
+            type=["xlsx", "xls"],
+            help="Planilha com os itens verificáveis. Se não enviada, usa os 12 itens padrão da NBR 9050:2020.",
+            label_visibility="collapsed"
+        )
+        if xlsx_file:
+            st.markdown(f"""
+            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
+                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
+                        font-size:0.8rem">
+              ✅ <strong>{xlsx_file.name}</strong>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background:#fafafa;border:1px dashed #d1d5de;border-radius:6px;
+                        padding:0.6rem 0.85rem;margin-top:0.5rem;font-size:0.75rem;color:#9ca3af">
+              Usando 12 itens padrão da NBR 9050:2020
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Stepper DEPOIS dos uploaders (ifc_file e xlsx_file já definidos) ─────
     step1 = "done" if api_key else "active"
     step2 = "done" if (api_key and ifc_file) else ("active" if api_key else "pending")
     step3 = "done" if (api_key and ifc_file and xlsx_file) else ("active" if (api_key and ifc_file) else "pending")
@@ -1883,77 +1949,7 @@ with tab_upload:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Upload cards com hierarquia visual ───────────────────────────────────
-    col1, col2 = st.columns([3, 2], gap="large")
-
-    with col1:
-        # Card primário — IFC (mais destaque)
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
-          <div class="section-title" style="margin:0">📐 Modelo BIM</div>
-          <span style="background:rgb(28,96,241);color:#fff;font-size:0.6rem;
-                       font-weight:700;padding:2px 8px;border-radius:10px;
-                       letter-spacing:0.05em">OBRIGATÓRIO</span>
-        </div>
-        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
-          Arquivo IFC exportado do Revit, ArchiCAD ou Vectorworks.
-          Suporta schemas <strong>IFC2X3</strong> e <strong>IFC4</strong>.
-        </div>
-        """, unsafe_allow_html=True)
-        ifc_file = st.file_uploader(
-            "Arquivo IFC",
-            type=["ifc"],
-            help="Formato IFC2X3 ou IFC4. Exportado via Revit, ArchiCAD, Vectorworks etc.",
-            label_visibility="collapsed"
-        )
-        if ifc_file:
-            st.markdown(f"""
-            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
-                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
-                        font-size:0.8rem">
-              ✅ <strong>{ifc_file.name}</strong>
-              <span style="font-family:'Courier New',monospace;color:#6b7280;font-size:0.72rem;margin-left:8px">
-                {ifc_file.size / 1024 / 1024:.1f} MB
-              </span>
-            </div>""", unsafe_allow_html=True)
-
-    with col2:
-        # Card secundário — XLSX (menos destaque)
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
-          <div class="section-title" style="margin:0;color:#6b7280">📋 Checklist NBR</div>
-          <span style="background:#f4f6f9;color:#6b7280;font-size:0.6rem;
-                       font-weight:700;padding:2px 8px;border-radius:10px;
-                       border:1px solid #d1d5de;letter-spacing:0.05em">OPCIONAL</span>
-        </div>
-        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
-          Planilha com estratégias e prompts personalizados.
-          Sem ela, usa os <strong>12 itens padrão</strong>.
-        </div>
-        """, unsafe_allow_html=True)
-        xlsx_file = st.file_uploader(
-            "Planilha NBR 9050 (opcional)",
-            type=["xlsx", "xls"],
-            help="Planilha com os itens verificáveis. Se não enviada, usa os 12 itens padrão da NBR 9050:2020.",
-            label_visibility="collapsed"
-        )
-        if xlsx_file:
-            st.markdown(f"""
-            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
-                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
-                        font-size:0.8rem">
-              ✅ <strong>{xlsx_file.name}</strong>
-            </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background:#fafafa;border:1px dashed #d1d5de;border-radius:6px;
-                        padding:0.6rem 0.85rem;margin-top:0.5rem;font-size:0.75rem;color:#9ca3af">
-              Usando 12 itens padrão da NBR 9050:2020
-            </div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ── Run button ─────────────────────────────────────────────────────────
+    # ── can_run e mensagens de estado ─────────────────────────────────────
     can_run = bool(ifc_file and api_key)
 
     # Mensagens de estado inline (sem warn-box solta)
