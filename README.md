@@ -1,149 +1,312 @@
-# ZIGURAT_TFM
-♿ Verificação Automatizada de Conformidade BIM — ABNT NBR 9050:2020
+# ♿ Auditor de Acessibilidade BIM — NBR 9050:2020
 
-Trabalho de Conclusão de Master (TFM) — Master Internacional em IA para Arquitetura e Construção
+**Verificação Automatizada de Conformidade BIM com IA**
+
+Trabalho de Conclusão de Master (TFM) — Master Internacional em IA para Arquitetura e Construção  
 Zigurat Institute of Technology
 
-Sistema LLM-cêntrico e multi-agente para verificação automatizada de conformidade de acessibilidade arquitetônica a partir de modelos BIM no formato IFC, com interface web interativa construída em Streamlit.
+---
 
-👥 Grupo 1 — Autores
-NomeFunção no GrupoKevin DiasPesquisa e desenvolvimentoViviane SuzukePesquisa e desenvolvimentoSergio RosenboimPesquisa e desenvolvimentoWilliam MouraPesquisa e desenvolvimentoRenata RochaBIM & IFC / Coordenação técnica
+## 👥 Grupo 1 — Autores
+
+| Nome | Função no Grupo |
+|---|---|
+| Kevin Dias Quintian | Pesquisa e desenvolvimento |
+| Viviane Nishizaki Suzuke | Pesquisa e desenvolvimento |
+| Sergio Rosenboim | Pesquisa e desenvolvimento |
+| William Felipe dos Santos Moura | Pesquisa e desenvolvimento |
+| Renata Gomes Rocha | BIM & IFC / Coordenação técnica |
+
 Orientação acadêmica: Zigurat Institute of Technology
 
-🎯 Objetivo
-Automatizar a auditoria de acessibilidade de edificações verificando 12 itens selecionados da ABNT NBR 9050:2020 diretamente a partir do modelo IFC, sem necessidade de inspeção manual completa.
-O sistema adota uma abordagem LLM-cêntrica — o modelo de linguagem atua como motor de raciocínio ao longo de todo o pipeline: interpreta a norma, analisa os dados extraídos do IFC, cruza evidências e redige o laudo técnico. Essa escolha contrasta com abordagens de geometria computacional pura, que exigem metadados BIM completos e precisos, algo raramente encontrado em exportações reais de projetos brasileiros.
-Entregáveis gerados pelo sistema
+---
 
-Checklist .xlsx — 12 itens com status, valores encontrados, valores exigidos e recomendações
-Relatório .docx — Laudo técnico completo com resumo executivo, metodologia, análise contextual e limitações
-Relatório .html — Versão visual interativa para apresentação e compartilhamento
+## 🎯 Objetivo
 
+Automatizar a auditoria de acessibilidade de edificações verificando **12 itens selecionados** da ABNT NBR 9050:2020 diretamente a partir do modelo IFC, sem necessidade de inspeção manual completa.
 
-🏗️ Arquitetura: Pipeline LLM-Cêntrico
-O coração do sistema é um pipeline sequencial de 4 agentes CrewAI, onde cada agente é especializado em uma etapa do processo de auditoria. Pense nisso como uma linha de montagem inteligente: o modelo BIM entra "bruto" numa ponta e sai como um laudo técnico estruturado na outra.
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  Agente 1    │───▶│  Agente 2    │───▶│  Agente 3    │───▶│  Agente 4    │
-│  Extrator    │    │  Auditor     │    │  Consultor   │    │  Redator     │
-│  BIM / IFC   │    │  NBR 9050    │    │  de Contexto │    │  Técnico     │
-└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
-       ▲                                        ▲
-   Modelo .ifc                          Planilha de normas
-                                        (.xlsx externo)
-AgentePapelFerramenta principalAgente 1 — ExtratorEspecialista em Extração de Dados BIM/IFCextrair_elementos_acessibilidade_ifc via IfcOpenShellAgente 2 — AuditorAuditor de Acessibilidade NBR 9050:2020Raciocínio LLM sobre o inventário do Agente 1Agente 3 — ConsultorConsultor de Contexto de Projeto AECconsultar_documentos_projeto (BEP + Memorial)Agente 4 — RedatorRedator de Relatórios Técnicos AECgerar_checklist_xlsx + gerar_relatorio_docx
+O sistema adota uma abordagem **híbrida LLM-cêntrica + geometria computacional**:
 
-Por que multi-agente? Cada agente tem um system prompt especializado e acesso apenas às ferramentas que precisa. Isso reduz alucinações, melhora rastreabilidade e permite escalar — adicionar um novo agente de priorização, por exemplo, não exige reescrever o sistema inteiro.
+- **Python + IfcOpenShell** extrai e pré-processa os dados do modelo IFC — calculando desníveis de escada, testando giro de cadeira de rodas com Shapely, classificando equipamentos sanitários por nome, e filtrando coordenadas inválidas.
+- **LLM (Claude ou Gemini)** atua como motor de raciocínio — interpreta a norma, analisa as evidências extraídas e redige o laudo técnico com recomendações corretivas.
 
+Essa abordagem supera a geometria pura (que depende de Psets completos, raramente encontrados em exportações reais) e o LLM puro (que alucina dimensões), aproveitando o melhor dos dois paradigmas.
 
-✅ Itens NBR 9050:2020 Verificados
-O sistema verifica 12 itens distribuídos em 4 categorias de classificação, que refletem a complexidade crescente da verificação:
-CategoriaDefiniçãoItemElemento BIMGeométricaDimensão diretamente mensurável no IFC6.6Rampas — inclinação máximaGeométrica6.11.1Corredores — largura mínimaGeométrica6.11.2Portas — vão livre mínimo (0,80m × 2,10m)CondicionalDepende de condições do contexto6.11.3Janelas — peitoril mínimo (1,20m)Condicional5.4.3Corrimão — altura e presença bilateralCondicional6.3.4Pisos — desníveis com chanfroRelacionalRelação espacial entre elementos7.5Circulação — espaço de giro Ø 1,50mRelacional7.7.2.1Bacia sanitária — altura 0,43–0,45mRelacional7.7.1Vaso sanitário — espaço lateral livre 0,80mQualitativaAtributo textual / semântico4.6.6Portas — maçaneta tipo alavancaQualitativa7.6–7.8Box de acessibilidade — barras de apoioQualitativa7.8Lavatório — suspenso ou sem coluna
-Status possíveis: ✅ Conforme · ❌ Não Conforme · ⚠️ Indeterminado · N/A
+### Entregáveis gerados
 
-🖥️ Interface Web — Streamlit App
-O sistema conta com uma interface web completa que elimina a necessidade do Google Colab para uso em produção. A interface segue o padrão visual do TFM (identidade Zigurat).
-Funcionalidades da interface
+- **Checklist `.xlsx`** — 12 itens com status, valores encontrados, valores exigidos e recomendações
+- **Relatório `.html`** — versão visual interativa com GlobalId para rastreabilidade no Revit/BIMcollab
+- **JSON bruto** — dados completos para integração com outros sistemas (BCF, Solibri, BIMcollab)
 
-Upload de arquivos — modelo .ifc e planilha de normas .xlsx
-Configuração de LLM — suporte a Anthropic (Claude) e Google (Gemini), com campo para inserção de API Key
-Seleção de modelo — escolha entre versões disponíveis de cada provedor
-Painel de progresso — indicador visual dos 4 agentes em execução em tempo real
-Aba Resultados — tabela interativa com filtros por status e por categoria
-Rastreabilidade por GlobalId — cada elemento analisado exibe seu GlobalId IFC, permitindo localização direta no Revit, BIMcollab Zoom, Solibri e usBIM
-Download de entregáveis — checklist .xlsx, relatório .docx e relatório .html com um clique
+---
 
+## 🏗️ Arquitetura: Pipeline Híbrido
 
-O que é o GlobalId? É o identificador único e permanente de cada elemento no modelo IFC — como o CPF de uma porta ou rampa. Com ele, você cola o código no campo de busca do Revit ou do seu software de coordenação BIM e vai diretamente ao elemento não conforme, sem busca manual.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        PIPELINE DE AUDITORIA                    │
+│                                                                  │
+│  .ifc ──▶ [1. Extração Python]  ──▶ [2. Análise Geométrica]    │
+│                                           │                      │
+│  .xlsx ──▶ [Regras NBR 9050]              ▼                     │
+│  (estratégias + prompts)          [3. Resumo Estruturado]       │
+│                                           │                      │
+│                                           ▼                      │
+│                                    [4. LLM Auditor]             │
+│                                           │                      │
+│                                           ▼                      │
+│                               [5. Relatório + Checklist]        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
+### Etapa 1 — Extração (Python + IfcOpenShell)
 
-📦 Stack Tecnológica
+Para cada categoria, aplica estratégia primária e fallback:
+
+| Categoria | Estratégia primária | Fallback |
+|---|---|---|
+| Portas | `IfcDoor.OverallWidth/Height` | Psets (`width`, `height`) |
+| Escadas | `IfcStairFlight` (RiserHeight × 0,3048 pés→m) | Psets |
+| Rampas | `IfcRampFlight.OverallRise/Run` | `IfcSlab` com nome "rampa" |
+| Corrimões | `IfcRailing` | `IfcBuildingElementProxy` "corrimão" |
+| Sanitários | `IfcFlowTerminal` classificado por nome | `IfcBuildingElementProxy` |
+| Espaços | `IfcSpace` + geometria Shapely | Paredes para estimativa |
+| Janelas | `IfcWindow.SillHeight` via Psets | — |
+
+> ⚠️ **IFC2X3 (Revit):** `RiserHeight` de escadas é exportado em **pés** — o sistema converte automaticamente (`× 0.3048`). Coordenadas Z globais de equipamentos sanitários são filtradas (aceita apenas 0,01m–2,50m para evitar cotas absolutas do terreno).
+
+### Etapa 2 — Análise Geométrica (Shapely)
+
+Quando `IfcSpace` está presente, o sistema executa verificação geométrica real:
+
+```python
+# Teste de giro ⌀ 1,50m — NBR 9050 item 7.5
+shape = ifcopenshell.geom.create_shape(settings, space)
+verts = np.array(shape.geometry.verts).reshape(-1, 3)
+floor_pts = verts[np.abs(verts[:,2] - verts[:,2].min()) < 0.02]
+hull = MultiPoint(floor_pts[:,:2]).convex_hull
+circle = Point(hull.centroid).buffer(0.75, resolution=64)
+conforme = hull.contains(circle)
+```
+
+Para corredores (item 6.11.1), calcula largura via bounding box e aplica a regra condicional por faixa de comprimento diretamente em Python — sem depender do LLM para a aritmética.
+
+### Etapa 3 — Resumo Estruturado
+
+Em vez de enviar JSON bruto ao LLM, o sistema gera um resumo legível por seção:
+
+```
+## BACIAS SANITÁRIAS (IfcFlowTerminal) — 30 elementos
+  [2CJnZwS...] Deca_Bacia Vogue Plus P.505.17
+    MountingHeight=N/D | Z_placement=0.43m | altura_estimada=0.43m
+
+## ESCADAS — 27 IfcStair, 41 IfcStairFlight
+  ⚠️ RiserHeight já convertido de pés→metros (×0.3048)
+  [0juK2FV...] Escada Run 1 | Risers=16 | RiserHeight=0.18m | desnivel_m=2.88m
+  Todos os 41 lances com desnível > 0,19m REQUEREM corrimão.
+```
+
+### Etapa 4 — LLM Auditor
+
+O LLM recebe dados estruturados + instruções específicas por item (da planilha XLSX). Regras explícitas evitam erros comuns:
+
+- Nunca retornar "Indeterminado" por não encontrar `IfcSanitaryTerminal` — modelo IFC2X3 usa `IfcFlowTerminal`
+- Usar `desnivel_m` já calculado para escadas
+- Reconhecer "cuba embutir" e "semiencaixe" como lavatório sem coluna → Conforme
+- Coordenadas Z já filtradas — sem valores absurdos de coordenadas globais
+
+---
+
+## ✅ Itens NBR 9050:2020 Verificados
+
+| Classificação | Item | Elemento | Verificação |
+|---|---|---|---|
+| Geométrica | 6.6 | Rampas | Inclinação máxima por faixa de desnível |
+| Geométrica | 6.11.1 | Corredores | Largura mínima (Shapely + bounding box) |
+| Geométrica | 6.11.2 | Portas | Vão livre ≥ 0,80m × 2,10m |
+| Condicional | 6.11.3 | Janelas | Peitoril ≥ 1,20m |
+| Condicional | 5.4.3 | Corrimão | Alturas 0,70m e 0,92m; bilateral |
+| Condicional | 6.3.4 | Pisos | Desníveis 5–20mm com chanfro |
+| Relacional | 7.5 | Circulação | Giro ⌀ 1,50m (teste geométrico real) |
+| Relacional | 7.7.2.1 | Bacia sanitária | Altura 0,43–0,45m |
+| Relacional | 7.7.1 | Vaso sanitário | Área livre lateral 0,80m × 1,20m |
+| Qualitativa | 4.6.6 | Portas | Maçaneta tipo alavanca |
+| Qualitativa | 7.6–7.8 | Barras de apoio | Posição e altura ~0,75m |
+| Qualitativa | 7.8 | Lavatório | Suspenso ou sem coluna |
+
+**Status possíveis:** ✅ Conforme · ❌ Não Conforme · ⚠️ Indeterminado · N/A
+
+---
+
+## 🖥️ Interface Web — Streamlit App
+
+Interface construída com identidade visual Zigurat (fundo branco, Trebuchet MS, paleta rgb(77,83,99) / rgb(68,205,148) / rgb(28,96,241)).
+
+### Funcionalidades
+
+- **Stepper de fluxo** — indicador visual `① API Key → ② IFC → ③ Checklist → ④ Executar` com estados dinâmicos
+- **Upload hierárquico** — card IFC (obrigatório, destaque maior) + card XLSX (opcional, discreto)
+- **Configuração de LLM** — Anthropic (Claude) ou Google (Gemini), com campo de API key seguro ("não armazenada · apenas nesta sessão")
+- **Seleção de modelo** — Haiku / Sonnet / Opus (Claude) ou Flash / Pro (Gemini)
+- **Log em tempo real** — terminal verde com progresso da extração e chamada ao LLM
+- **Aba Resultados** — tabela com filtros por status, categoria e busca por GlobalId
+- **Rastreabilidade por GlobalId** — cada elemento exibe seu identificador IFC para localização direta no Revit, BIMcollab Zoom, Solibri e usBIM
+- **Download em 3 formatos** — checklist `.xlsx`, relatório `.html` e JSON bruto
+
+> **O que é o GlobalId?** Identificador único e permanente de cada elemento no IFC — como o CPF de uma porta ou rampa. Cole no campo `Manage → Inquiry → IFC GUID` do Revit para selecionar o elemento diretamente.
+
+---
+
+## 📦 Stack Tecnológica
+
+```
 Python 3.10+
-├── crewai / crewai-tools     # Orquestração multi-agente
-├── ifcopenshell              # Leitura e extração de dados IFC
-├── streamlit                 # Interface web
-├── openpyxl                  # Geração do checklist .xlsx
-├── python-docx               # Geração do laudo .docx
-└── anthropic / google-genai  # LLMs (Claude e Gemini)
-Instalação
-bashpip install crewai crewai-tools
-pip install ifcopenshell
-pip install streamlit
-pip install openpyxl python-docx
-pip install anthropic google-generativeai
-Variáveis de ambiente
-bashANTHROPIC_API_KEY=sk-ant-...   # Para uso com Claude
-GOOGLE_API_KEY=...             # Para uso com Gemini
+├── streamlit>=1.32.0        # Interface web
+├── ifcopenshell             # Leitura e extração de dados IFC (IFC2X3 e IFC4)
+├── shapely>=2.0.0           # Análise geométrica (giro cadeira, largura corredores)
+├── numpy>=1.24.0            # Processamento de vértices 3D
+├── anthropic>=0.25.0        # LLM Claude (Haiku, Sonnet, Opus)
+├── google-generativeai      # LLM Gemini (Flash, Pro)
+├── openpyxl>=3.1.0          # Geração do checklist .xlsx
+├── pandas>=2.0.0            # Leitura da planilha de normas
+└── python-docx>=1.1.0       # Geração de relatórios .docx
+```
 
-As chaves também podem ser inseridas diretamente na sidebar do app Streamlit, sem necessidade de variável de ambiente.
+### Instalação
 
-
-📁 Estrutura do Repositório
-TFM-NBR9050/
-├── app.py                                  # App Streamlit (interface principal)
-├── pipeline/
-│   ├── agents.py                           # Definição dos 4 agentes CrewAI
-│   ├── tasks.py                            # Tasks e dependências entre agentes
-│   ├── tools.py                            # Ferramentas: extração IFC, geração de relatórios
-│   └── crew.py                             # Montagem e execução do Crew
-├── normas/
-│   └── Normas_Acessibilidade_NBR9050.xlsx  # Planilha externa com os 12 itens verificáveis
-├── docs/
-│   ├── bep_projeto.docx                    # BIM Execution Plan (exemplo de input)
-│   └── memorial_descritivo.docx            # Memorial de Acabamentos (exemplo de input)
-├── notebooks/
-│   └── M5T2_nbr9050_crewai_ifc2x3.ipynb   # Notebook Colab (versão acadêmica)
-└── output/                                 # Pasta de saída (gerada automaticamente)
-    ├── checklist_nbr9050_YYYYMMDD.xlsx
-    ├── relatorio_acessibilidade_YYYYMMDD.docx
-    └── relatorio_acessibilidade_YYYYMMDD.html
-
-▶️ Como Executar
-Opção 1 — App Streamlit (recomendado)
-bash# Clone o repositório
-git clone https://github.com/seu-usuario/TFM-NBR9050.git
-cd TFM-NBR9050
-
-# Instale as dependências
+```bash
 pip install -r requirements.txt
+```
 
-# Inicie o app
-streamlit run app.py
-Acesse http://localhost:8501 no navegador. Faça upload do .ifc e da planilha de normas, insira sua API Key e clique em Iniciar Verificação.
-Opção 2 — Google Colab
-Abra notebooks/M5T2_nbr9050_crewai_ifc2x3.ipynb no Colab, faça upload dos arquivos de projeto e execute as células em ordem. A execução completa leva aproximadamente 9–15 minutos, incluindo pausas de rate limit entre agentes.
+### Variáveis de ambiente (opcional)
 
-⚙️ Configurações Principais
-ParâmetroValor padrãoDescriçãomodelo LLMclaude-sonnet-4-5Modelo de linguagem (configurável na UI)rate_limit_pause15sPausa entre tarefas para respeitar limites de APISchema IFC suportadoIFC2X3 e IFC4Detecção automática com fallbackplanilha_normasNormas_Acessibilidade_NBR9050.xlsxFonte das regras de verificação
+```bash
+ANTHROPIC_API_KEY=sk-ant-...   # Para uso com Claude
+GOOGLE_API_KEY=...             # Para uso com Gemini
+```
 
-⚠️ Limitações Conhecidas e Decisões de Design
-1. Schema IFC2X3 e IfcSanitaryTerminal
-A entidade IfcSanitaryTerminal foi introduzida apenas no IFC4. Em projetos exportados via Revit com schema IFC2X3 — que ainda predomina no mercado brasileiro — o sistema usa IfcFlowTerminal como fallback. Alturas de instalação de bacias sanitárias ficam Indeterminadas pois o dado existe apenas na geometria 3D, não nos atributos nativos.
-2. Metadados dimensionais ausentes
-Atributos como OverallWidth, OverallRise e OverallRun frequentemente estão nulos em exportações Revit, mesmo quando a dimensão existe no modelo 3D. Itens como vão livre de portas podem ser subestimados ou classificados como Indeterminados.
-3. Verificações qualitativas
-Itens como "maçaneta tipo alavanca" ou "lavatório suspenso" dependem de atributos textuais nos PropertySets, que raramente são preenchidos em projetos reais. Requerem inspeção manual complementar.
-4. IfcSpace ausente
-Itens que dependem de espaços modelados (corredores, giro de cadeira de rodas) ficam automaticamente como Indeterminados se o modelo não exportar IfcSpace.
-Por que LLM e não geometria computacional pura?
-CritérioLLM PuroGeometria PuraHíbrido (Proposto)Interpretação de texto normativoAlta capacidadeInviávelAlta capacidadePrecisão geométrica (<1mm)Baixa confiabilidadeAlta precisãoAlta precisãoClassificação qualitativaAdequadoInviávelAdequadoResiliência a IFC incompletoModeradaBaixaAlta (fallback)Rastreabilidade de evidênciasLimitadaAltaAlta
+As chaves também podem ser inseridas diretamente na sidebar do app — não são armazenadas entre sessões.
 
-🔬 Contexto Acadêmico
+---
 
-Programa: Master Internacional em IA para Arquitetura e Construção — Zigurat Institute of Technology
-Módulo de referência: M5T2 — Sistemas Agentic AI aplicados ao AEC
-Norma verificada: ABNT NBR 9050:2020 — Acessibilidade a edificações, mobiliário, espaços e equipamentos urbanos
-Modelo IFC de teste: Atlas Londrina Test Tower (1589_21-ARQ-LO-IFC-R01.ifc) — torre de testes de elevadores (~150m, 11.270 m²), Londrina/PR
-Documentos de projeto utilizados: BEP-R00 e MED-R00 (uso exclusivamente acadêmico)
+## 📁 Estrutura do Repositório
 
+```
+ZIGURAT_TFM/
+├── nbr9050_app.py                          # App Streamlit (interface + pipeline completo)
+├── requirements.txt                        # Dependências Python
+├── packages.txt                            # Dependências do sistema (libgomp1 para IfcOpenShell)
+├── Normas_Acessibilidade_NBR9050_TFM.xlsx  # Planilha com os 12 itens verificáveis
+│                                           # (estratégias primária/fallback + prompts por item)
+└── notebooks/
+    └── M5T2_nbr9050_crewai_ifc2x3.ipynb   # Versão CrewAI para Google Colab
+```
 
-🛠️ Extensões Futuras
+> A planilha XLSX é o único arquivo a editar para personalizar as regras de verificação — cada linha define entidade IFC, estratégia de busca, fallback e prompt específico para o LLM.
 
-Análise geométrica 3D via ifcopenshell.geom — extrair dimensões diretamente da malha sólida, resolvendo os itens Indeterminados por falta de atributos
-Agente pré-processador de qualidade de modelo — avalia completude de Psets antes da auditoria, ajustando expectativas de resultado
-Agente de priorização — ordena não conformidades por criticidade e custo estimado de correção
-Exportação para BCF — integração com BIM Collaboration Format para envio direto de issues ao Solibri, BIMcollab Zoom ou BIMcollab Cloud
-Extensão para outras normas — a planilha de normas é o único arquivo a editar para suportar Decreto-Lei 163/2021, normas municipais ou requisitos LEED
-Deploy em nuvem — Streamlit Community Cloud ou HuggingFace Spaces para acesso sem instalação local
+---
+
+## ▶️ Como Executar
+
+### Opção 1 — Streamlit Cloud (recomendado, sem instalação)
+
+1. Acesse [share.streamlit.io](https://share.streamlit.io) → **Sign in with GitHub**
+2. New app → repositório `renata-rocha-create/ZIGURAT_TFM` → arquivo `nbr9050_app.py`
+3. Em **Settings → Secrets**, configure sua API key:
+   ```toml
+   ANTHROPIC_API_KEY = "sk-ant-..."
+   ```
+4. Clique **Deploy** — o app estará disponível em URL pública em ~5 minutos
+
+### Opção 2 — Local
+
+```bash
+git clone https://github.com/renata-rocha-create/ZIGURAT_TFM.git
+cd ZIGURAT_TFM
+pip install -r requirements.txt
+streamlit run nbr9050_app.py
+```
+
+Acesse `http://localhost:8501`. Faça upload do `.ifc` e da planilha, insira sua API key e clique em **Executar Auditoria**.
+
+### Opção 3 — Google Colab (versão acadêmica original)
+
+Abra `notebooks/M5T2_nbr9050_crewai_ifc2x3.ipynb` no Colab. A execução completa leva ~9–15 minutos, incluindo pausas de rate limit entre agentes CrewAI.
+
+---
+
+## ⚙️ Configurações Principais
+
+| Parâmetro | Valor padrão | Descrição |
+|---|---|---|
+| Modelo LLM | `claude-sonnet-4-5` | Configurável na sidebar |
+| Temperature | `0.0` | Fixo — determinístico para auditoria normativa |
+| Schema IFC suportado | IFC2X3 e IFC4 | Detecção automática |
+| Raio giro cadeira | `0.75m` | ⌀ 1,50m conforme NBR 9050 item 7.5 |
+| Filtro Z_placement | `0,01m – 2,50m` | Exclui coordenadas globais do terreno |
+| Conversão pés→metros | `× 0.3048` | Aplicada a RiserHeight de IfcStairFlight |
+
+---
+
+## ⚠️ Limitações Conhecidas e Decisões de Design
+
+### 1. Schema IFC2X3 e IfcSanitaryTerminal
+`IfcSanitaryTerminal` foi introduzida apenas no IFC4. Em projetos Revit com IFC2X3, o sistema usa `IfcFlowTerminal` para todos os equipamentos, classificando-os por nome de família (Deca, Celite, Bobrick). Bacias sem `MountingHeight` no Pset usam coordenada Z relativa ao pavimento como proxy.
+
+### 2. RiserHeight de escadas em pés
+Revit exporta `RiserHeight` e `TreadLength` de `IfcStairFlight` em pés mesmo em projetos métricos. O sistema detecta isso e converte (`× 0.3048`) automaticamente. O campo `desnivel_m` já vem calculado para o LLM.
+
+### 3. Coordenadas Z globais
+Projetos em coordenadas compartilhadas têm Z absoluto (~714m em SP). O sistema filtra aceitando apenas valores entre 0,01m e 2,50m para altura de equipamentos, descartando a cota do terreno.
+
+### 4. IfcSpace ausente
+Corredores (6.11.1) e giro de cadeira (7.5) ficam Indeterminados sem `IfcSpace`. Para habilitar: no Revit, use **Architecture → Room** em todos os ambientes e ative **"Export Rooms as IfcSpace"** no export IFC, preferencialmente com schema IFC4.
+
+### 5. Metadados ausentes nos Psets
+`SillHeight` (janelas), `MountingHeight` (bacias), `OverallRise/Run` (rampas) frequentemente não são preenchidos em projetos brasileiros. Ver tabela de ações no Revit abaixo.
+
+### 6. Verificações qualitativas
+Maçaneta tipo alavanca (4.6.6) e posição de barras de apoio (7.6–7.8) dependem de atributos textuais raramente preenchidos. Requerem inspeção manual complementar ou enriquecimento do modelo.
+
+### Como melhorar os resultados no Revit
+
+| Item | Parâmetro faltante | Onde preencher no Revit |
+|---|---|---|
+| 6.6 Rampas | `OverallRise`, `OverallRun` | Edit Type → adicionar parâmetros compartilhados |
+| 6.11.3 Janelas | `SillHeight` | Properties → Sill Height (cada janela) |
+| 5.4.3 Escadas | `NumberOfRisers`, `RiserHeight` | Reexportar como IFC4 |
+| 7.7.2.1 Bacias | `MountingHeight` | Pset_SanitaryTerminalTypeCommon |
+| 7.6–7.8 Barras | Posição (lateral/frontal/fundo) | Description do elemento |
+| 4.6.6 Maçaneta | Tipo de acionamento | Description da porta |
+
+---
+
+## 🔬 Contexto Acadêmico
+
+- **Programa:** Master Internacional em IA para Arquitetura e Construção — Zigurat Institute of Technology
+- **Módulo de referência:** M5T2 — Sistemas Agentic AI aplicados ao AEC
+- **Norma verificada:** ABNT NBR 9050:2020 — Acessibilidade a edificações, mobiliário, espaços e equipamentos urbanos
+- **Modelos IFC de teste:**
+  - Atlas Londrina Test Tower (`1589_21-ARQ-LO-IFC-R01.ifc`) — torre de testes de elevadores, ~150m, 11.270 m², Londrina/PR
+  - Agostinho Cantu (`AGO-ARQ-AP-000-MOD-EMBA-R00.ifc`) — edifício residencial, São Paulo/SP
+- **Abordagem:** LLM-cêntrica com pré-processamento geométrico em Python
+
+---
+
+## 🛠️ Extensões Futuras
+
+- **Análise geométrica 3D completa** — `ifcopenshell.geom` para rampas sem `OverallRise/Run`, chanfros (item 6.3.4) e área de transferência lateral (item 7.7.1)
+- **Exportação para BCF** — envio direto de não conformidades ao Solibri, BIMcollab Zoom ou BIMcollab Cloud, usando o GlobalId já presente no relatório
+- **Agente de priorização** — ordena não conformidades por criticidade e custo estimado de correção
+- **Extensão para outras normas** — a planilha XLSX é o único arquivo a editar para suportar Decreto 5.296/2004, normas municipais ou requisitos LEED
+- **Suporte a IFC4** — mapeamento completo de `IfcSanitaryTerminal` e `IfcStairFlight` com dados dimensionais nativos
+- **Interface para BEP e Memorial Descritivo** — upload de documentos de contexto para enriquecer as recomendações do LLM
+
+---
+
+## 📄 Licença
+
+Este projeto foi desenvolvido para fins exclusivamente acadêmicos no contexto do TFM do Master Internacional em IA para Arquitetura e Construção — Zigurat Institute of Technology. Os modelos IFC e documentos de projeto utilizados como input são de uso interno acadêmico.
 
 
 📄 Licença
