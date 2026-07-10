@@ -2081,10 +2081,20 @@ with tab_upload:
             progress_bar.progress(90)
             log(f"✅ Auditoria concluída!")
 
+            # Sobrescreve campos que o Python já conhece com certeza — não faz
+            # sentido confiar que o LLM vai ecoar corretamente algo que já está
+            # disponível antes mesmo da chamada (mesmo princípio do resumo abaixo).
+            # Foi assim que pegamos o bug: numa rodada real, o LLM devolveu
+            # "2024-01-15" no lugar da data certa (10/07/2026), ignorando o
+            # exemplo que já estava no prompt.
+            resultado["modelo"] = ifc_file.name
+            resultado["schema_ifc"] = elementos.get("schema", resultado.get("schema_ifc", "—"))
+            resultado["data_auditoria"] = datetime.now().strftime("%d/%m/%Y")
+
             # Recalcula o resumo em Python — determinístico, não depende do LLM
             # ter feito a soma/divisão certa (ver calcular_resumo() para o porquê).
             resultado["resumo"] = calcular_resumo(resultado.get("resultados", []))
-            log("🧮 Resumo recalculado em Python (contagem determinística).")
+            log("🧮 Resumo e metadados recalculados em Python (não dependem do eco do LLM).")
 
             resumo = resultado["resumo"]
             log(f"   Total: {resumo.get('total',0)} | ✅ {resumo.get('conformes',0)} | ❌ {resumo.get('nao_conformes',0)} | ⚠️ {resumo.get('indeterminados',0)}")
