@@ -310,6 +310,47 @@ section[data-testid="stSidebar"] { min-width: 240px !important; transform: none 
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _estatisticas_portas(portas_todas: list[dict]) -> dict:
+    """
+    Calcula min/max e contagem de não conformidades sobre TODAS as portas
+    do modelo — não só a amostra de 60 que é enviada ao prompt.
+
+    POR QUÊ ISSO EXISTE: a amostra (`portas[:60]`) existe pra não estourar
+    o orçamento de tokens do prompt quando o modelo tem centenas de portas.
+    Mas se o LLM só vê 60 de, digamos, 265 portas, ele só consegue avaliar
+    conformidade das 60 — as outras 205 nunca são checadas, e uma porta fora
+    do padrão nelas passaria batido. Esta função varre a lista COMPLETA em
+    Python (rápido, determinístico) e devolve um resumo estatístico que é
+    anexado ao prompt ao lado da amostra — assim o veredito do LLM cobre
+    o modelo inteiro, não só a fatia que caiu na amostra ilustrativa.
+    """
+    larguras = [(d["GlobalId"], d["OverallWidth_m"]) for d in portas_todas if d.get("OverallWidth_m") is not None]
+    alturas  = [(d["GlobalId"], d["OverallHeight_m"]) for d in portas_todas if d.get("OverallHeight_m") is not None]
+
+    if not larguras and not alturas:
+        return {"total": len(portas_todas), "com_dimensoes": 0}
+
+    gid_min_larg, min_larg = min(larguras, key=lambda x: x[1]) if larguras else (None, None)
+    gid_min_alt, min_alt   = min(alturas, key=lambda x: x[1]) if alturas else (None, None)
+
+    # NBR 9050 item 6.11.2: largura ≥ 0,80m e altura ≥ 2,10m
+    nao_conf_largura = [gid for gid, l in larguras if l < 0.80]
+    nao_conf_altura  = [gid for gid, a in alturas if a < 2.10]
+
+    return {
+        "total": len(portas_todas),
+        "com_dimensoes": len(set(gid for gid, _ in larguras) | set(gid for gid, _ in alturas)),
+        "largura_min_m": round(min_larg, 3) if min_larg is not None else None,
+        "largura_min_globalid": gid_min_larg,
+        "altura_min_m": round(min_alt, 3) if min_alt is not None else None,
+        "altura_min_globalid": gid_min_alt,
+        "n_nao_conformes_largura": len(nao_conf_largura),
+        "n_nao_conformes_altura": len(nao_conf_altura),
+        "globalids_nao_conformes_largura": nao_conf_largura[:15],
+        "globalids_nao_conformes_altura": nao_conf_altura[:15],
+    }
+
+
 def extract_ifc_elements(ifc_path: str) -> dict:
     """
     Extrai e pré-processa elementos do IFC para auditoria NBR 9050.
@@ -406,6 +447,7 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         d["Psets"] = todos_psets(el)
         portas.append(d)
     resultado["elementos"]["IfcDoor"] = portas[:60]
+    resultado["estatisticas_portas"] = _estatisticas_portas(portas)
 
     # ── 2. RAMPAS (6.6) ─────────────────────────────────────────────────────
     rampas = []
@@ -805,7 +847,7 @@ def _resumo_elementos(elementos: dict) -> str:
     # ── PORTAS ────────────────────────────────────────────────────────────────
     portas = elems.get("IfcDoor", [])
     if portas:
-        linhas.append(f"\n## PORTAS (IfcDoor) — {len(portas)} elementos")
+        linhas.append(f"\n## PORTAS (IfcDoor) — amostra de {len(portas)} elementos")
         for p in portas[:15]:
             gid  = p.get("GlobalId","?")
             nome = p.get("Name","?")
@@ -815,11 +857,24 @@ def _resumo_elementos(elementos: dict) -> str:
             w_str = f"{ow:.3f}m" if ow else "N/D"
             linhas.append(f"  [{gid}] {nome} | Altura={h_str} | Largura={w_str}")
         if len(portas) > 15:
-            # Estatísticas para portas além da amostra
-            larguras = [p.get("OverallWidth_m") or p.get("OverallWidth") for p in portas if p.get("OverallWidth_m") or p.get("OverallWidth")]
-            if larguras:
-                larguras_num = [float(l) for l in larguras if l]
-                linhas.append(f"  ... +{len(portas)-15} portas | Menor largura={min(larguras_num):.3f}m | Maior={max(larguras_num):.3f}m")
+            linhas.append(f"  ... +{len(portas)-15} portas na amostra (ver estatística completa abaixo)")
+
+        est = elementos.get("estatisticas_portas")
+        if est and est.get("com_dimensoes"):
+            linhas.append(
+                f"\n  📊 ESTATÍSTICA SOBRE TODAS AS {est['total']} PORTAS DO MODELO "
+                f"(não apenas a amostra acima — use isto para o veredito do item 6.11.2):"
+            )
+            linhas.append(f"     Menor largura encontrada: {est['largura_min_m']}m [GlobalId: {est['largura_min_globalid']}]")
+            linhas.append(f"     Menor altura encontrada: {est['altura_min_m']}m [GlobalId: {est['altura_min_globalid']}]")
+            linhas.append(
+                f"     Portas com largura < 0,80m: {est['n_nao_conformes_largura']} "
+                f"| GlobalIds: {est['globalids_nao_conformes_largura'] or '—'}"
+            )
+            linhas.append(
+                f"     Portas com altura < 2,10m: {est['n_nao_conformes_altura']} "
+                f"| GlobalIds: {est['globalids_nao_conformes_altura'] or '—'}"
+            )
 
     # ── ESCADAS ───────────────────────────────────────────────────────────────
     escadas = elems.get("Escadas", [])
@@ -1088,6 +1143,12 @@ REGRAS OBRIGATÓRIAS DE AUDITORIA
 
 8. Gere EXATAMENTE {n} resultados — um por item listado abaixo.
 
+9. Para PORTAS (item 6.11.2): a lista em "PORTAS (IfcDoor)" é só uma AMOSTRA
+   ilustrativa. O veredito de conformidade deve usar a seção "ESTATÍSTICA SOBRE
+   TODAS AS N PORTAS DO MODELO" — se n_nao_conformes_largura ou
+   n_nao_conformes_altura forem > 0, o status é "Não Conforme" (não "Conforme"),
+   mesmo que a amostra pareça toda ok. Cite os GlobalIds não conformes listados.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ITENS A VERIFICAR
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1217,16 +1278,78 @@ def call_gemini(api_key: str, model: str, prompt: str, temperature: float) -> di
     return _parse_json_robusto(resp.text)
 
 
+def classificar_status(status: str) -> str:
+    """
+    Classifica a string de status livre devolvida pelo LLM numa das 4 categorias
+    canônicas. Tolerante a variações de capitalização/pontuação do modelo
+    ("Não conforme", "NÃO CONFORME", "não-conforme" etc. caem todas aqui).
+
+    Fonte única desta regra — usada tanto pelo badge visual (status_badge)
+    quanto pelo cálculo do resumo (calcular_resumo), pra garantir que os
+    números da tabela e os números do resumo NUNCA divirjam entre si.
+    """
+    s = (status or "").lower()
+    if "não" in s or "nao" in s:
+        return "Não Conforme"
+    if "conforme" in s:
+        return "Conforme"
+    if "indet" in s:
+        return "Indeterminado"
+    return "N/A"
+
+
+def calcular_resumo(resultados: list[dict]) -> dict:
+    """
+    Calcula o resumo estatístico em PYTHON, de forma determinística —
+    em vez de confiar que o LLM soma e divide corretamente.
+
+    ANTES: "percentual_conformidade" vinha inteiro da resposta do modelo
+    (o prompt só mostrava um exemplo de formato, "0%", e torcia pra ele
+    fazer a conta certa). Reproduzir a mesma auditoria duas vezes podia,
+    em teoria, dar dois percentuais diferentes mesmo com os mesmos status.
+
+    DEPOIS: o LLM só precisa classificar cada item (Conforme/Não Conforme/
+    Indeterminado/N/A) — a contagem e a divisão são sempre feitas aqui,
+    logo o mesmo conjunto de status SEMPRE produz o mesmo percentual.
+
+    Também calcula "percentual_sobre_verificaveis": conformidade excluindo
+    itens N/A do denominador. Itens N/A significam "não se aplica a este
+    modelo" (ex: item de janela quando o modelo não tem janelas) — incluí-los
+    no denominador junto com os itens Indeterminados infla artificialmente
+    a sensação de não conformidade. As duas métricas juntas dão um retrato
+    mais honesto do que só o percentual bruto.
+    """
+    total = len(resultados)
+    categorias = [classificar_status(r.get("status", "")) for r in resultados]
+
+    conformes      = categorias.count("Conforme")
+    nao_conformes  = categorias.count("Não Conforme")
+    indeterminados = categorias.count("Indeterminado")
+    na             = categorias.count("N/A")
+
+    verificaveis = total - na
+    pct_bruto              = round(conformes / total * 100, 1) if total else 0.0
+    pct_sobre_verificaveis = round(conformes / verificaveis * 100, 1) if verificaveis else 0.0
+
+    return {
+        "total": total,
+        "conformes": conformes,
+        "nao_conformes": nao_conformes,
+        "indeterminados": indeterminados,
+        "na": na,
+        "percentual_conformidade": f"{pct_bruto}%",
+        "percentual_sobre_verificaveis": f"{pct_sobre_verificaveis}%",
+    }
+
+
 def status_badge(status: str) -> str:
-    s = status.lower()
-    if "conforme" in s and "não" not in s and "nao" not in s:
-        return '<span class="badge badge-conforme">✅ Conforme</span>'
-    elif "não" in s or "nao" in s:
-        return '<span class="badge badge-nao">❌ Não Conforme</span>'
-    elif "indet" in s:
-        return '<span class="badge badge-indet">⚠️ Indeterminado</span>'
-    else:
-        return '<span class="badge badge-na">— N/A</span>'
+    badges = {
+        "Conforme":      '<span class="badge badge-conforme">✅ Conforme</span>',
+        "Não Conforme":  '<span class="badge badge-nao">❌ Não Conforme</span>',
+        "Indeterminado": '<span class="badge badge-indet">⚠️ Indeterminado</span>',
+        "N/A":           '<span class="badge badge-na">— N/A</span>',
+    }
+    return badges[classificar_status(status)]
 
 
 AUTORES = "Kevin Dias Quintian &nbsp;·&nbsp; Renata Gomes Rocha &nbsp;·&nbsp; Sergio Rosenboim &nbsp;·&nbsp; Viviane Nishizaki Suzuke &nbsp;·&nbsp; William Felipe dos Santos Moura"
@@ -1453,7 +1576,8 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
     <div class="card"><div class="num" style="color:#e03c3c">{resumo.get('nao_conformes',0)}</div><div class="lbl">Não Conformes</div></div>
     <div class="card"><div class="num" style="color:#e8920a">{resumo.get('indeterminados',0)}</div><div class="lbl">Indeterminados</div></div>
     <div class="card"><div class="num" style="color:#6b7280">{resumo.get('na',0)}</div><div class="lbl">N/A</div></div>
-    <div class="card"><div class="num" style="color:rgb(28,96,241)">{resumo.get('percentual_conformidade','—')}</div><div class="lbl">Conformidade</div></div>
+    <div class="card"><div class="num" style="color:rgb(28,96,241)">{resumo.get('percentual_conformidade','—')}</div><div class="lbl">Conformidade (bruta)</div></div>
+    <div class="card"><div class="num" style="color:#0c447c">{resumo.get('percentual_sobre_verificaveis','—')}</div><div class="lbl">Conformidade (s/ N/A)</div></div>
   </div>
 
   <div class="obs">{resultado.get('observacoes_gerais','—')}</div>
@@ -1957,8 +2081,14 @@ with tab_upload:
             progress_bar.progress(90)
             log(f"✅ Auditoria concluída!")
 
-            resumo = resultado.get("resumo", {})
+            # Recalcula o resumo em Python — determinístico, não depende do LLM
+            # ter feito a soma/divisão certa (ver calcular_resumo() para o porquê).
+            resultado["resumo"] = calcular_resumo(resultado.get("resultados", []))
+            log("🧮 Resumo recalculado em Python (contagem determinística).")
+
+            resumo = resultado["resumo"]
             log(f"   Total: {resumo.get('total',0)} | ✅ {resumo.get('conformes',0)} | ❌ {resumo.get('nao_conformes',0)} | ⚠️ {resumo.get('indeterminados',0)}")
+            log(f"   Conformidade: {resumo.get('percentual_conformidade')} (bruta) | {resumo.get('percentual_sobre_verificaveis')} (sobre itens verificáveis, exclui N/A)")
 
             st.session_state.resultado = resultado
             progress_bar.progress(100)
@@ -2001,6 +2131,7 @@ with tab_resultado:
         indet   = resumo.get("indeterminados", 0)
         na      = resumo.get("na", 0)
         pct     = resumo.get("percentual_conformidade", "—")
+        pct_ver = resumo.get("percentual_sobre_verificaveis", "—")
 
         st.markdown(f"""
         <div class="metric-row">
@@ -2009,7 +2140,8 @@ with tab_resultado:
           <div class="metric-card"><div class="metric-num c-red">{nconf}</div><div class="metric-label">Não Conformes</div></div>
           <div class="metric-card"><div class="metric-num c-amber">{indet}</div><div class="metric-label">Indeterminados</div></div>
           <div class="metric-card"><div class="metric-num c-muted">{na}</div><div class="metric-label">N/A</div></div>
-          <div class="metric-card"><div class="metric-num c-green">{pct}</div><div class="metric-label">Conformidade</div></div>
+          <div class="metric-card"><div class="metric-num c-green">{pct}</div><div class="metric-label">Conformidade (bruta)</div></div>
+          <div class="metric-card"><div class="metric-num c-blue">{pct_ver}</div><div class="metric-label">Conformidade (s/ N/A)</div></div>
         </div>
         """, unsafe_allow_html=True)
 
