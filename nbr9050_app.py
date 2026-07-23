@@ -356,7 +356,10 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     Extrai e pré-processa elementos do IFC para auditoria NBR 9050.
     
     DESCOBERTAS DO MODELO AGO-ARQ (IFC2X3/Revit):
-    - IfcStairFlight: NumberOfRisers, RiserHeight, TreadLength estão em PÉS → converter x0.3048
+    - IfcStairFlight: em IFC2X3, NumberOfRisers/RiserHeight/TreadLength são atributos
+      diretos da entidade e vêm em PÉS (→ x0.3048). Em IFC4 esses dados saem do
+      Pset_StairFlightCommon/Pset_StairCommon ("NumberOfRiser" no singular) já em
+      METROS — extract_ifc_elements detecta qual caso se aplica por elemento.
     - IfcDoor: OverallHeight (pos 9), OverallWidth (pos 10) estão em METROS → correto
     - IfcFlowTerminal: contém bacias, lavatórios, barras de apoio, torneiras — filtrar por nome
     - IfcRailing: contém guarda-corpos (não corrimão) — modelo não tem corrimão separado
@@ -450,25 +453,82 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     resultado["estatisticas_portas"] = _estatisticas_portas(portas)
 
     # ── 2. RAMPAS (6.6) ─────────────────────────────────────────────────────
+    def _geom_bbox_rise_run(el):
+        """
+        Fallback geométrico: quando não há OverallRise/OverallRun nem no atributo
+        direto nem no Pset, calcula uma ESTIMATIVA a partir da geometria bruta
+        (bounding box). rise = variação em Z; run = maior dimensão em planta (X ou Y).
+        É uma aproximação (assume rampa alinhada aos eixos) — sirva para destravar
+        a análise, mas sinalize para conferência manual.
+        """
+        try:
+            import ifcopenshell.geom
+            import numpy as np
+            gset = ifcopenshell.geom.settings()
+            gset.set(gset.USE_WORLD_COORDS, True)
+            shape = ifcopenshell.geom.create_shape(gset, el)
+            verts = np.array(shape.geometry.verts).reshape(-1, 3)
+            rise = round(float(verts[:, 2].max() - verts[:, 2].min()), 3)
+            run = round(float(max(verts[:, 0].max() - verts[:, 0].min(),
+                                   verts[:, 1].max() - verts[:, 1].min())), 3)
+            return rise, run
+        except Exception:
+            return None, None
+
     rampas = []
     for tipo in ["IfcRamp", "IfcRampFlight"]:
         for el in ifc.by_type(tipo):
             d = info_basica(el, tipo)
-            rise = getattr(el, "OverallRise", None)
-            run  = getattr(el, "OverallRun", None)
-            d["OverallRise_m"] = round(float(rise) * FT_TO_M, 3) if rise else None
-            d["OverallRun_m"]  = round(float(run) * FT_TO_M, 3) if run else None
-            if d["OverallRise_m"] and d["OverallRun_m"] and d["OverallRun_m"] > 0:
-                d["inclinacao_pct"] = round(d["OverallRise_m"] / d["OverallRun_m"] * 100, 2)
-            d["Psets"] = todos_psets(el)
+            ps = todos_psets(el)
+            d["Psets"] = ps
+
+            rise_attr = getattr(el, "OverallRise", None)
+            run_attr  = getattr(el, "OverallRun", None)
+            rise_pset = buscar_prop(ps, "overallrise", "altura da rampa", "desnivel")
+            run_pset  = buscar_prop(ps, "overallrun", "comprimento da rampa")
+            slope_pset = buscar_prop(ps, "slope", "inclinacao", "inclinação")
+
+            rise_m, run_m, fonte = None, None, "nao_encontrado"
+            if rise_attr and run_attr:
+                # IFC2X3: atributo direto, em pés
+                rise_m = round(float(rise_attr) * FT_TO_M, 3)
+                run_m  = round(float(run_attr) * FT_TO_M, 3)
+                fonte = "atributo_direto_ifc2x3_pes"
+            elif rise_pset and run_pset:
+                # IFC4: Pset_RampFlightCommon/RampCommon, já em metros
+                rise_m = round(float(rise_pset), 3)
+                run_m  = round(float(run_pset), 3)
+                fonte = "pset_ifc4_metros"
+            else:
+                # Nenhum dos dois → estima pela geometria (bounding box)
+                rise_geo, run_geo = _geom_bbox_rise_run(el)
+                if rise_geo and run_geo:
+                    rise_m, run_m = rise_geo, run_geo
+                    fonte = "geometria_bounding_box_ESTIMATIVA"
+
+            d["OverallRise_m"] = rise_m
+            d["OverallRun_m"]  = run_m
+            d["fonte_dados_rampa"] = fonte
+            if slope_pset is not None:
+                d["Slope_pset_bruto"] = slope_pset  # valor cru do Pset — unidade não confirmada, conferir
+            if rise_m and run_m and run_m > 0:
+                d["inclinacao_pct"] = round(rise_m / run_m * 100, 2)
             rampas.append(d)
-    # Fallback: IfcSlab com nome de rampa
+
+    # Fallback: IfcSlab modelado como rampa (nome contém "rampa"/"ramp"/"slope")
     for el in ifc.by_type("IfcSlab"):
         nome = (getattr(el, "Name", "") or "").lower()
         otype = (getattr(el, "ObjectType", "") or "").lower()
         if any(t in nome + otype for t in ["rampa", "ramp", "slope"]):
             d = info_basica(el, "IfcSlab(rampa-fallback)")
             d["Psets"] = todos_psets(el)
+            rise_geo, run_geo = _geom_bbox_rise_run(el)
+            if rise_geo and run_geo:
+                d["OverallRise_m"] = rise_geo
+                d["OverallRun_m"] = run_geo
+                d["fonte_dados_rampa"] = "geometria_bounding_box_slab_ESTIMATIVA"
+                if run_geo > 0:
+                    d["inclinacao_pct"] = round(rise_geo / run_geo * 100, 2)
             rampas.append(d)
     resultado["elementos"]["Rampas"] = rampas
     resultado["nota_rampas"] = f"Modelo tem {contar('IfcRamp')} IfcRamp e {contar('IfcRampFlight')} IfcRampFlight. Sem rampas modeladas neste projeto."
@@ -478,22 +538,45 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     escadas = []
     for el in ifc.by_type("IfcStairFlight"):
         d = info_basica(el, "IfcStairFlight")
-        nr = getattr(el, "NumberOfRisers", None)
-        nt = getattr(el, "NumberOfTreads", None)
-        rh = getattr(el, "RiserHeight", None)
-        tl = getattr(el, "TreadLength", None)
+        ps = todos_psets(el)
+        d["Psets"] = ps
 
-        d["NumberOfRisers"] = int(nr) if nr else None
-        d["NumberOfTreads"] = int(nt) if nt else None
-        # CONVERSÃO: Revit exporta em pés
-        d["RiserHeight_m"]  = round(float(rh) * FT_TO_M, 4) if rh else None
-        d["TreadLength_m"]  = round(float(tl) * FT_TO_M, 4) if tl else None
+        # ── Estratégia dupla: atributo direto (IFC2X3) → Pset (IFC4) ──
+        # IFC2X3: NumberOfRisers/RiserHeight/TreadLength são atributos nativos de
+        #         IfcStairFlight, exportados pelo Revit EM PÉS.
+        # IFC4:   buildingSMART moveu esses dados para dentro de Pset_StairFlightCommon/
+        #         Pset_StairCommon, com o nome NO SINGULAR ("NumberOfRiser"), e o Revit
+        #         já exporta em METROS. Sem esse fallback, um IFC4 sempre voltava N/D
+        #         mesmo com o dado presente no arquivo.
+        nr_attr = getattr(el, "NumberOfRisers", None)
+        rh_attr = getattr(el, "RiserHeight", None)
+        tl_attr = getattr(el, "TreadLength", None)
+        nt_attr = getattr(el, "NumberOfTreads", None)
 
-        # Desnível calculado = NumberOfRisers × RiserHeight (em metros)
-        if nr and rh:
-            d["desnivel_m"] = round(int(nr) * float(rh) * FT_TO_M, 3)
+        if nr_attr or rh_attr:
+            nr = nr_attr
+            nt = nt_attr
+            rh_m = round(float(rh_attr) * FT_TO_M, 4) if rh_attr else None
+            tl_m = round(float(tl_attr) * FT_TO_M, 4) if tl_attr else None
+            d["fonte_dados_escada"] = "atributo_direto_ifc2x3_pes"
+        else:
+            nr = buscar_prop(ps, "numberofriser", "numberofrisers", "número de espelhos", "numero de espelhos")
+            nt = buscar_prop(ps, "numberoftread", "número de pisos", "numero de pisos")
+            rh_val = buscar_prop(ps, "riserheight", "altura do espelho")
+            tl_val = buscar_prop(ps, "treadlength", "largura do piso")
+            rh_m = round(float(rh_val), 4) if rh_val else None
+            tl_m = round(float(tl_val), 4) if tl_val else None
+            d["fonte_dados_escada"] = "pset_ifc4_metros" if rh_m else "nao_encontrado"
 
-        d["Psets"] = todos_psets(el)
+        d["NumberOfRisers"] = int(float(nr)) if nr else None
+        d["NumberOfTreads"] = int(float(nt)) if nt else None
+        d["RiserHeight_m"]  = rh_m
+        d["TreadLength_m"]  = tl_m
+
+        # Desnível calculado = NumberOfRisers × RiserHeight (já em metros)
+        if d["NumberOfRisers"] and d["RiserHeight_m"]:
+            d["desnivel_m"] = round(d["NumberOfRisers"] * d["RiserHeight_m"], 3)
+
         escadas.append(d)
 
     # Também inclui IfcStair (container) para contexto
@@ -504,8 +587,9 @@ def extract_ifc_elements(ifc_path: str) -> dict:
 
     resultado["elementos"]["Escadas"] = escadas
     resultado["nota_escadas"] = (
-        f"ATENÇÃO: RiserHeight e TreadLength em IfcStairFlight deste modelo Revit estão em PÉS. "
-        f"Já convertidos para metros (×0.3048) nos campos RiserHeight_m e TreadLength_m. "
+        f"RiserHeight_m e TreadLength_m já normalizados para metros — via atributo direto "
+        f"convertido de pés (schema IFC2X3) ou via Pset_StairCommon/Pset_StairFlightCommon já "
+        f"em metros (schema IFC4). Veja 'fonte_dados_escada' em cada item para a origem. "
         f"Use desnivel_m = NumberOfRisers × RiserHeight_m para calcular o desnível total."
     )
 
@@ -547,6 +631,7 @@ def extract_ifc_elements(ifc_path: str) -> dict:
             TERMOS_SANITARIO = ["banheiro", "sanitário", "sanitario", "wc",
                                 "lavabo", "toalete", "vestiário", "vestiario",
                                 "banho", "bath", "toilet"]
+            TERMOS_ACESSIVEL_SPACE = ["pne", "pcd"]
 
             for el in ifc.by_type("IfcSpace"):
                 d = info_basica(el, "IfcSpace")
@@ -556,9 +641,15 @@ def extract_ifc_elements(ifc_path: str) -> dict:
                 d["Area_m2"] = buscar_prop(ps, "area", "grossarea", "netarea")
 
                 nome_completo = ((d.get("Name") or "") + " " + (d.get("LongName") or "")).lower()
+                eh_sanitario_generico = any(t in nome_completo for t in TERMOS_SANITARIO)
+                eh_acessivel = any(t in nome_completo for t in TERMOS_ACESSIVEL_SPACE)
                 d["tipo_ambiente"] = (
                     "corredor" if any(t in nome_completo for t in TERMOS_CORREDOR)
-                    else "sanitario" if any(t in nome_completo for t in TERMOS_SANITARIO)
+                    # Só marca como "sanitario" (analisado no item 7.5 — giro 1,50m) se tiver
+                    # PNE/PCD no nome. Banheiro comum sem essa tag vira "sanitario_nao_pne"
+                    # e fica de fora da verificação de giro/transferência lateral.
+                    else "sanitario" if (eh_sanitario_generico and eh_acessivel)
+                    else "sanitario_nao_pne" if eh_sanitario_generico
                     else "outro"
                 )
 
@@ -672,6 +763,32 @@ def extract_ifc_elements(ifc_path: str) -> dict:
             pass
         return None
 
+    # ── Filtro PNE/PCD — só analisa como "banheiro acessível" quem tem a tag no nome ──
+    # Sem isso, o auditor tratava QUALQUER banheiro do modelo como se precisasse
+    # cumprir as dimensões de acessibilidade (giro 1,50m, altura de bacia etc.),
+    # quando a NBR 9050 só exige isso dos sanitários efetivamente designados como
+    # acessíveis. Verifica: (1) nome/tipo do próprio elemento; (2) se ausente, nome
+    # do IfcSpace que o contém (quando o modelo exporta IfcSpace).
+    TERMOS_ACESSIVEL = ["pne", "pcd"]
+    try:
+        from ifcopenshell.util.element import get_container as _get_container
+    except Exception:
+        _get_container = None
+
+    def eh_acessivel_pne(el, texto_proprio):
+        if any(t in texto_proprio for t in TERMOS_ACESSIVEL):
+            return True, "nome_elemento"
+        if _get_container:
+            try:
+                cont = _get_container(el)
+                if cont is not None and cont.is_a("IfcSpace"):
+                    nome_cont = ((getattr(cont, "Name", "") or "") + " " + (getattr(cont, "LongName", "") or "")).lower()
+                    if any(t in nome_cont for t in TERMOS_ACESSIVEL):
+                        return True, "nome_espaco_continente"
+            except Exception:
+                pass
+        return False, None
+
     TERMOS_BACIA    = ["bacia", "vaso", "toilet", "wc", "p.505", "vogue plus p", "caixa acoplada"]
     TERMOS_LAVAT    = [
         "lavatório", "lavatorio", "lavat",
@@ -688,6 +805,7 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     lavatórios = []
     barras    = []
     outros_san = []
+    excluidos_sem_pne = []  # fixtures que casaram categoria mas não têm tag PNE/PCD — não entram na auditoria
 
     for el in ifc.by_type("IfcFlowTerminal"):
         nome  = (getattr(el, "Name", "") or "").lower()
@@ -709,18 +827,23 @@ def extract_ifc_elements(ifc_path: str) -> dict:
             if not mh:
                 d["altura_estimada_m"] = z  # proxy para o LLM usar
 
+        pne_ok, pne_fonte = eh_acessivel_pne(el, texto)
+        d["pne_pcd_confirmado"] = pne_ok
+        if pne_fonte:
+            d["pne_pcd_fonte"] = pne_fonte
+
         if any(t in texto for t in TERMOS_BACIA):
             d["categoria_sanitario"] = "bacia_sanitaria"
-            bacias.append(d)
+            (bacias if pne_ok else excluidos_sem_pne).append(d)
         elif any(t in texto for t in TERMOS_LAVAT):
             d["categoria_sanitario"] = "lavatorio"
-            lavatórios.append(d)
+            (lavatórios if pne_ok else excluidos_sem_pne).append(d)
         elif any(t in texto for t in TERMOS_BARRA):
             d["categoria_sanitario"] = "barra_apoio"
-            barras.append(d)
+            (barras if pne_ok else excluidos_sem_pne).append(d)
         elif any(t in texto for t in TERMOS_CHUVEIRO):
             d["categoria_sanitario"] = "chuveiro"
-            outros_san.append(d)
+            outros_san.append(d)  # chuveiros/outros não entram no filtro PNE (fora do escopo dos itens 7.x aqui)
         else:
             d["categoria_sanitario"] = "outros"
             outros_san.append(d)
@@ -730,9 +853,18 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     resultado["elementos"]["BarrasApoio"] = barras[:20]
     resultado["elementos"]["OutrosSanitarios"] = outros_san[:10]
     resultado["nota_sanitarios"] = (
-        f"IfcFlowTerminal classificados: {len(bacias)} bacias, {len(lavatórios)} lavatórios, "
-        f"{len(barras)} barras de apoio, {len(outros_san)} outros (chuveiros, torneiras, dispensers). "
-        f"Total IfcFlowTerminal no modelo: {contar('IfcFlowTerminal')}."
+        f"IfcFlowTerminal classificados E marcados como PNE/PCD (analisados nos itens 7.x): "
+        f"{len(bacias)} bacias, {len(lavatórios)} lavatórios, {len(barras)} barras de apoio. "
+        f"Outros elementos (chuveiros, torneiras, dispensers): {len(outros_san)}. "
+        f"Total IfcFlowTerminal no modelo: {contar('IfcFlowTerminal')}. "
+        + (
+            f"⚠️ {len(excluidos_sem_pne)} bacia(s)/lavatório(s)/barra(s) foram encontrados mas EXCLUÍDOS "
+            f"da auditoria por não terem 'PNE' ou 'PCD' no nome (nem no espaço IfcSpace continente) — "
+            f"portanto não foram tratados como sanitário acessível. Se isso for inesperado, confira a "
+            f"nomenclatura das famílias no Revit (ex: renomear para 'Bacia PNE', 'WC Acessível PCD')."
+            if excluidos_sem_pne else
+            "Nenhum elemento foi excluído por falta de tag PNE/PCD."
+        )
     )
 
     # ── 7. JANELAS (6.11.3) ──────────────────────────────────────────────────
@@ -776,20 +908,6 @@ def extract_ifc_elements(ifc_path: str) -> dict:
 
     return limpar_nulos(resultado)
 
-
-
-def read_xlsx_items(xlsx_bytes: bytes) -> list[dict]:
-    """Read NBR items from uploaded Excel file — aba 'Itens Verificáveis — NBR 9050'."""
-    try:
-        import pandas as pd
-        # Tenta ler a aba principal com as estratégias e prompts
-        xf = pd.ExcelFile(io.BytesIO(xlsx_bytes))
-        aba = next((s for s in xf.sheet_names if "verific" in s.lower()), xf.sheet_names[0])
-        df = pd.read_excel(io.BytesIO(xlsx_bytes), sheet_name=aba, header=1)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df.to_dict(orient="records")
-    except Exception as e:
-        return [{"error": str(e)}]
 
 
 # ── Regras da NBR 9050 — agora carregadas de nbr9050_rules.json ─────────────
@@ -912,12 +1030,18 @@ def _resumo_elementos(elementos: dict) -> str:
     linhas.append(f"\n## RAMPAS — {len(rampas)} elementos")
     if rampas:
         for r in rampas[:5]:
-            gid  = r.get("GlobalId","?")
-            nome = r.get("Name","?")
-            rise = r.get("OverallRise_m","N/D")
-            run_ = r.get("OverallRun_m","N/D")
-            inc  = r.get("inclinacao_pct","?")
-            linhas.append(f"  [{gid}] {nome} | Rise={rise}m | Run={run_}m | Inclinação={inc}%")
+            gid   = r.get("GlobalId","?")
+            nome  = r.get("Name","?")
+            rise  = r.get("OverallRise_m","N/D")
+            run_  = r.get("OverallRun_m","N/D")
+            inc   = r.get("inclinacao_pct","?")
+            fonte = r.get("fonte_dados_rampa","?")
+            linhas.append(f"  [{gid}] {nome} | Rise={rise}m | Run={run_}m | Inclinação={inc}% | Fonte={fonte}")
+            if fonte and "ESTIMATIVA" in fonte:
+                linhas.append(f"    ⚠️ Rise/Run estimados por bounding box geométrico (Pset não trouxe OverallRise/Run) — conferir manualmente.")
+            slope_bruto = r.get("Slope_pset_bruto")
+            if slope_bruto is not None:
+                linhas.append(f"    Valor bruto de 'Slope' no Pset: {slope_bruto} (unidade não confirmada — pode ser graus; comparar com Inclinação calculada acima antes de usar).")
     else:
         linhas.append("  Nenhuma rampa modelada (IfcRamp/IfcRampFlight ausentes)")
 
@@ -981,19 +1105,29 @@ def _resumo_elementos(elementos: dict) -> str:
         linhas.append("  → Para habilitar: exportar Rooms do Revit como IfcSpace")
     else:
         # Separa por tipo
-        corredores  = [e for e in espacos if e.get("tipo_ambiente") == "corredor"]
-        sanitarios_s = [e for e in espacos if e.get("tipo_ambiente") == "sanitario"]
-        outros      = [e for e in espacos if e.get("tipo_ambiente") == "outro"]
+        corredores    = [e for e in espacos if e.get("tipo_ambiente") == "corredor"]
+        sanitarios_s  = [e for e in espacos if e.get("tipo_ambiente") == "sanitario"]
+        sanit_nao_pne = [e for e in espacos if e.get("tipo_ambiente") == "sanitario_nao_pne"]
+        outros        = [e for e in espacos if e.get("tipo_ambiente") == "outro"]
 
-        linhas.append(f"  Corredores: {len(corredores)} | Sanitários: {len(sanitarios_s)} | Outros: {len(outros)}")
+        linhas.append(
+            f"  Corredores: {len(corredores)} | Sanitários PNE/PCD: {len(sanitarios_s)} | "
+            f"Banheiros sem tag PNE/PCD (fora do escopo do item 7.5): {len(sanit_nao_pne)} | Outros: {len(outros)}"
+        )
 
-        # Resultados de giro por status
-        conformes_giro  = [e for e in espacos if e.get("giro_150_status") == "Conforme"]
-        nconf_giro      = [e for e in espacos if e.get("giro_150_status") == "Não Conforme"]
-        indet_giro      = [e for e in espacos if e.get("giro_150_status") == "Indeterminado"]
+        # Resultados de giro por status — SÓ nos sanitários com tag PNE/PCD (item 7.5 é sobre
+        # sanitário acessível, não sobre qualquer banheiro do modelo)
+        conformes_giro  = [e for e in sanitarios_s if e.get("giro_150_status") == "Conforme"]
+        nconf_giro      = [e for e in sanitarios_s if e.get("giro_150_status") == "Não Conforme"]
+        indet_giro      = [e for e in sanitarios_s if e.get("giro_150_status") == "Indeterminado"]
 
-        linhas.append(f"\n  TESTE GIRO ⌀1,50m (NBR 9050 item 7.5) — via Shapely:")
+        linhas.append(f"\n  TESTE GIRO ⌀1,50m (NBR 9050 item 7.5) — apenas sanitários PNE/PCD, via Shapely:")
         linhas.append(f"  ✅ Conformes: {len(conformes_giro)} | ❌ Não Conformes: {len(nconf_giro)} | ⚠️ Indeterminados: {len(indet_giro)}")
+        if sanit_nao_pne:
+            linhas.append(
+                f"  ⚠️ {len(sanit_nao_pne)} banheiro(s) encontrados sem 'PNE'/'PCD' no nome — "
+                f"EXCLUÍDOS do teste de giro por não serem sanitário acessível designado."
+            )
 
         # Detalha sanitários
         if sanitarios_s:
@@ -1058,43 +1192,14 @@ def _resumo_elementos(elementos: dict) -> str:
     return "\n".join(linhas)
 
 
-def build_audit_prompt(elementos: dict, norma_items: list, modelo_nome: str) -> str:
+def build_audit_prompt(elementos: dict, modelo_nome: str) -> str:
     """
     Constrói prompt de auditoria orientado a dados estruturados.
     Em vez de JSON bruto, envia resumo legível por item.
+    Regras sempre vêm de nbr9050_rules.json (fonte única) — sem opção de planilha.
     """
     schema = elementos.get("schema", "IFC2X3")
-
-    # Usa regras da planilha se disponível, senão as regras do JSON (fonte padrão)
     regras_uso = obter_regras_lista()
-    if norma_items and len(norma_items) > 0 and "error" not in str(norma_items[0]):
-        try:
-            regras_planilha = []
-            for row in norma_items:
-                item_nbr = str(row.get("Item NBR 9050", row.get("Item_NBR", ""))).strip()
-                prompt_r = str(row.get("Estrutura de Prompt para incluir no arquivo.json (regras do sistema)", "")).strip()
-                if item_nbr and item_nbr != "nan" and prompt_r and prompt_r != "nan":
-                    regras_planilha.append({
-                        "item_nbr":          item_nbr,
-                        "subcategoria":      str(row.get("Subcategoria","")).strip(),
-                        "item_verificavel":  str(row.get("Item Verificável","")).strip(),
-                        "classificacao":     str(row.get("Classificação","")).strip(),
-                        # Mesmo formato aninhado do JSON — mantém uniforme com obter_regras_lista(),
-                        # para que o loop de "instrucoes" logo abaixo funcione igual não importa a origem.
-                        "entidades": {
-                            "primaria": str(row.get("Entidade IFC (primária)","")).strip(),
-                            "fallback": str(row.get("Entidade IFC (alternativa / fallback)","")).strip(),
-                        },
-                        "estrategias": {
-                            "primaria": str(row.get("Estratégia primária","")).strip(),
-                            "fallback": str(row.get("Estratégia de fallback","")).strip(),
-                        },
-                        "prompt_llm": prompt_r,
-                    })
-            if regras_planilha:
-                regras_uso = regras_planilha
-        except Exception:
-            pass
 
     # Instruções por item
     instrucoes = ""
@@ -1876,79 +1981,49 @@ tab_upload, tab_resultado, tab_ajuda = st.tabs(["📁 Arquivos & Execução", "�
 # ─────────────────────────────────────────────
 with tab_upload:
 
-    # ── Upload cards PRIMEIRO (antes do stepper, para definir ifc_file e xlsx_file) ──
-    col1, col2 = st.columns([3, 2], gap="large")
+    # ── Upload card — só o IFC (checklist agora vem sempre de nbr9050_rules.json) ──
+    st.markdown("""
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+      <div class="section-title" style="margin:0">📐 Modelo BIM</div>
+      <span style="background:rgb(28,96,241);color:#fff;font-size:0.6rem;
+                   font-weight:700;padding:2px 8px;border-radius:10px;
+                   letter-spacing:0.05em">OBRIGATÓRIO</span>
+    </div>
+    <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
+      Arquivo IFC exportado do Revit, ArchiCAD ou Vectorworks.
+      Suporta schemas <strong>IFC2X3</strong> e <strong>IFC4</strong>.
+    </div>
+    """, unsafe_allow_html=True)
+    ifc_file = st.file_uploader(
+        "Arquivo IFC",
+        type=["ifc"],
+        help="Formato IFC2X3 ou IFC4. Exportado via Revit, ArchiCAD, Vectorworks etc.",
+        label_visibility="collapsed"
+    )
+    if ifc_file:
+        st.markdown(f"""
+        <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
+                    border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
+                    font-size:0.8rem">
+          ✅ <strong>{ifc_file.name}</strong>
+          <span style="font-family:'Courier New',monospace;color:#6b7280;font-size:0.72rem;margin-left:8px">
+            {ifc_file.size / 1024 / 1024:.1f} MB
+          </span>
+        </div>""", unsafe_allow_html=True)
 
-    with col1:
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
-          <div class="section-title" style="margin:0">📐 Modelo BIM</div>
-          <span style="background:rgb(28,96,241);color:#fff;font-size:0.6rem;
-                       font-weight:700;padding:2px 8px;border-radius:10px;
-                       letter-spacing:0.05em">OBRIGATÓRIO</span>
-        </div>
-        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
-          Arquivo IFC exportado do Revit, ArchiCAD ou Vectorworks.
-          Suporta schemas <strong>IFC2X3</strong> e <strong>IFC4</strong>.
-        </div>
-        """, unsafe_allow_html=True)
-        ifc_file = st.file_uploader(
-            "Arquivo IFC",
-            type=["ifc"],
-            help="Formato IFC2X3 ou IFC4. Exportado via Revit, ArchiCAD, Vectorworks etc.",
-            label_visibility="collapsed"
-        )
-        if ifc_file:
-            st.markdown(f"""
-            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
-                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
-                        font-size:0.8rem">
-              ✅ <strong>{ifc_file.name}</strong>
-              <span style="font-family:'Courier New',monospace;color:#6b7280;font-size:0.72rem;margin-left:8px">
-                {ifc_file.size / 1024 / 1024:.1f} MB
-              </span>
-            </div>""", unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
-          <div class="section-title" style="margin:0;color:#6b7280">📋 Checklist NBR</div>
-          <span style="background:#f4f6f9;color:#6b7280;font-size:0.6rem;
-                       font-weight:700;padding:2px 8px;border-radius:10px;
-                       border:1px solid #d1d5de;letter-spacing:0.05em">OPCIONAL</span>
-        </div>
-        <div style="font-size:0.75rem;color:#6b7280;margin-bottom:0.5rem">
-          Planilha com estratégias e prompts personalizados.
-          Sem ela, usa os <strong>12 itens padrão</strong>.
-        </div>
-        """, unsafe_allow_html=True)
-        xlsx_file = st.file_uploader(
-            "Planilha NBR 9050 (opcional)",
-            type=["xlsx", "xls"],
-            help="Planilha com os itens verificáveis. Se não enviada, usa os 12 itens padrão da NBR 9050:2020.",
-            label_visibility="collapsed"
-        )
-        if xlsx_file:
-            st.markdown(f"""
-            <div style="background:rgba(68,205,148,0.08);border:1px solid rgba(68,205,148,0.4);
-                        border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;
-                        font-size:0.8rem">
-              ✅ <strong>{xlsx_file.name}</strong>
-            </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background:#fafafa;border:1px dashed #d1d5de;border-radius:6px;
-                        padding:0.6rem 0.85rem;margin-top:0.5rem;font-size:0.75rem;color:#9ca3af">
-              Usando 12 itens padrão da NBR 9050:2020
-            </div>""", unsafe_allow_html=True)
+    n_regras = len(obter_regras_lista())
+    st.markdown(f"""
+    <div style="background:#f4f6f9;border:1px solid #e5e7eb;border-radius:6px;
+                padding:0.6rem 0.85rem;margin-top:0.75rem;font-size:0.75rem;color:#6b7280">
+      📋 Checklist NBR carregado de <code>nbr9050_rules.json</code> — {n_regras} itens verificáveis.
+    </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ── Stepper DEPOIS dos uploaders (ifc_file e xlsx_file já definidos) ─────
+    # ── Stepper — 3 passos (checklist deixou de ser upload, é automático) ────
     step1 = "done" if api_key else "active"
     step2 = "done" if (api_key and ifc_file) else ("active" if api_key else "pending")
-    step3 = "done" if (api_key and ifc_file and xlsx_file) else ("active" if (api_key and ifc_file) else "pending")
-    step4 = "active" if (api_key and ifc_file) else "pending"
+    step3 = "active" if (api_key and ifc_file) else "pending"
 
     def step_dot(state, n):
         colors = {"done": "rgb(68,205,148)", "active": "rgb(28,96,241)", "pending": "#d1d5de"}
@@ -1986,12 +2061,7 @@ with tab_upload:
       {arrow}
       <div style="display:flex;align-items:center;gap:8px">
         {step_dot(step3,3)}
-        {step_label("Checklist","Planilha NBR (opcional)",step3)}
-      </div>
-      {arrow}
-      <div style="display:flex;align-items:center;gap:8px">
-        {step_dot(step4,4)}
-        {step_label("Executar","Iniciar auditoria",step4)}
+        {step_label("Executar","Iniciar auditoria",step3)}
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -2052,19 +2122,14 @@ with tab_upload:
             st.session_state.elementos = elementos
             progress_bar.progress(45)
 
-            # Step 3 — Read XLSX
-            norma_items = []
-            if xlsx_file:
-                log("📋 Lendo planilha da norma...")
-                norma_items = read_xlsx_items(xlsx_file.read())
-                log(f"✅ {len(norma_items)} itens carregados da planilha.")
-            else:
-                log("📋 Usando 12 itens padrão NBR 9050:2020.")
+            # Step 3 — Load rules (sempre do JSON — sem upload de checklist)
+            n_regras = len(obter_regras_lista())
+            log(f"📋 Usando checklist de nbr9050_rules.json ({n_regras} itens).")
             progress_bar.progress(55)
 
             # Step 4 — Build prompt
             log("📝 Construindo prompt de auditoria...")
-            prompt = build_audit_prompt(elementos, norma_items, ifc_file.name)
+            prompt = build_audit_prompt(elementos, ifc_file.name)
             log(f"   Prompt: ~{len(prompt)//4:,} tokens estimados")
             progress_bar.progress(65)
 
@@ -2292,12 +2357,12 @@ with tab_ajuda:
         - Selecione o modelo desejado
         - Ajuste a temperature (0.0–0.2 recomendado para auditoria)
 
-        **2. Carregue os arquivos**
+        **2. Carregue o arquivo**
         - **IFC** (obrigatório): arquivo exportado do Revit, ArchiCAD etc.
           - Formatos suportados: IFC2X3, IFC4
           - O sistema detecta o schema automaticamente
-        - **XLSX** (opcional): planilha com itens NBR 9050
-          - Se não carregado, usa os 12 itens padrão
+        - O **checklist NBR 9050** já vem embutido em `nbr9050_rules.json`,
+          na raiz do repositório — não é preciso enviar planilha nenhuma.
 
         **3. Execute a auditoria**
         - Clique em **Executar Auditoria**
