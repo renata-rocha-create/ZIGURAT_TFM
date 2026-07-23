@@ -174,6 +174,7 @@ html, body, .stApp, [class*="css"] {
 /* ── Status badges ── */
 .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-family: var(--font); font-size: 0.72rem; font-weight: 600; }
 .badge-conforme { background: rgba(26,184,122,0.12); color: #0a7a4e !important; border: 1px solid rgba(26,184,122,0.35); }
+.badge-parcial  { background: rgba(124,58,196,0.12);  color: #5b21a6 !important; border: 1px solid rgba(124,58,196,0.35); }
 .badge-nao      { background: rgba(224,60,60,0.10);  color: #9b1c1c !important; border: 1px solid rgba(224,60,60,0.35); }
 .badge-indet    { background: rgba(232,146,10,0.12); color: #7a4500 !important; border: 1px solid rgba(232,146,10,0.35); }
 .badge-na       { background: rgba(77,83,99,0.08);   color: #4d5363 !important; border: 1px solid rgba(77,83,99,0.2); }
@@ -198,6 +199,7 @@ html, body, .stApp, [class*="css"] {
 .metric-num { font-family: var(--font); font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 0.2rem; }
 .metric-label { font-family: var(--font); font-size: 0.62rem; color: var(--muted) !important; text-transform: uppercase; letter-spacing: 0.08em; }
 .c-green { color: var(--success) !important; }
+.c-purple{ color: #7c3ac4 !important; }
 .c-red   { color: var(--danger)  !important; }
 .c-amber { color: var(--warn)    !important; }
 .c-blue  { color: var(--zk-blue) !important; }
@@ -1303,9 +1305,13 @@ def build_audit_prompt(elementos: dict, modelo_nome: str) -> str:
     # Instruções por item
     instrucoes = ""
     for r in regras_uso:
+        status_possiveis = " | ".join(r.get("status_validacao_possiveis", ["Conforme","Não Conforme","Indeterminado","N/A"]))
+        confianca_txt = "SIM — classificação qualitativa/heurística, marque requer_confirmacao_humana=true" if r.get("requer_nivel_confianca") else "não — dado geométrico/objetivo, requer_confirmacao_humana=false"
         instrucoes += f"""
 ### Item {r['item_nbr']} — {r['subcategoria']}
 Verificação: {r['item_verificavel']}
+Status possíveis para ESTE item: {status_possiveis}
+Requer confirmação humana? {confianca_txt}
 Entidade primária: {r['entidades']['primaria']} | Fallback: {r['entidades']['fallback']}
 Estratégia primária: {r['estrategias']['primaria']}
 Estratégia fallback: {r['estrategias']['fallback']}
@@ -1366,6 +1372,21 @@ REGRAS OBRIGATÓRIAS DE AUDITORIA
     a sanitário/ambiente PNE/PCD. O item 6.11.2 (vão livre) continua valendo
     para todas as portas normalmente, independente dessa tag.
 
+11. Status "Parcial": use SOMENTE nos itens cujo "Status possíveis para ESTE
+    item" (ver seção ITENS A VERIFICAR) inclua "Parcial". Regra de limiar:
+    conte X elementos conformes de Y elementos avaliados. X=Y → "Conforme".
+    X=0 → "Não Conforme". 0<X<Y → "Parcial" (nunca arredonde pra Conforme ou
+    Não Conforme). Não invente "Parcial" em itens que avaliam um único
+    elemento/espaço — nesses, o status continua binário mesmo com esta opção
+    disponível de forma geral no sistema.
+
+12. Campo "requer_confirmacao_humana": true nos itens marcados como tal em
+    "Requer confirmação humana?" na seção ITENS A VERIFICAR (tipicamente
+    itens Qualitativos/Condicionais, como maçaneta e barras de apoio, cuja
+    classificação vem de nome/tipo do elemento, não de medição direta).
+    false nos itens objetivos/geométricos (ex: vão livre de porta, giro de
+    cadeira de rodas).
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ITENS A VERIFICAR
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1396,10 +1417,11 @@ efetivamente observou nos DADOS DO MODELO IFC acima, item por item.
       "elemento": "<contagem/descrição do(s) elemento(s) verificado(s) — preencher com dado real>",
       "globalid": "<GlobalId real do elemento mais representativo>",
       "tipo_ifc": "<classe IFC, ex: IfcDoor>",
-      "valor_encontrado": "<valor medido/observado nos dados fornecidos>",
+      "valor_encontrado": "<valor medido/observado — se Parcial, escreva 'X de Y elementos conformes'>",
       "valor_exigido": "<critério normativo do item>",
-      "status": "<Conforme | Não Conforme | Indeterminado | N/A>",
-      "recomendacao": "<ação concreta, só se Não Conforme ou Indeterminado>"
+      "status": "<use EXATAMENTE uma destas palavras, sem texto extra: Conforme | Parcial | Não Conforme | Indeterminado | N/A>",
+      "requer_confirmacao_humana": "<true se o item tem classificação Qualitativa/Condicional (ver 'requer_nivel_confianca' de cada item), senão false>",
+      "recomendacao": "<ação concreta — obrigatório se status for Não Conforme, Parcial ou Indeterminado>"
     }}
   ],
   "resumo": {{
@@ -1501,15 +1523,21 @@ def call_gemini(api_key: str, model: str, prompt: str, temperature: float) -> di
 
 def classificar_status(status: str) -> str:
     """
-    Classifica a string de status livre devolvida pelo LLM numa das 4 categorias
+    Classifica a string de status livre devolvida pelo LLM numa das 5 categorias
     canônicas. Tolerante a variações de capitalização/pontuação do modelo
     ("Não conforme", "NÃO CONFORME", "não-conforme" etc. caem todas aqui).
+
+    "Parcial" precisa ser checado ANTES do fallback pra N/A — a palavra não
+    contém "não"/"conforme"/"indet", então sem essa checagem explícita todo
+    resultado "Parcial" seria contado como "N/A" por engano.
 
     Fonte única desta regra — usada tanto pelo badge visual (status_badge)
     quanto pelo cálculo do resumo (calcular_resumo), pra garantir que os
     números da tabela e os números do resumo NUNCA divirjam entre si.
     """
     s = (status or "").lower()
+    if "parcial" in s:
+        return "Parcial"
     if "não" in s or "nao" in s:
         return "Não Conforme"
     if "conforme" in s:
@@ -1530,8 +1558,13 @@ def calcular_resumo(resultados: list[dict]) -> dict:
     em teoria, dar dois percentuais diferentes mesmo com os mesmos status.
 
     DEPOIS: o LLM só precisa classificar cada item (Conforme/Não Conforme/
-    Indeterminado/N/A) — a contagem e a divisão são sempre feitas aqui,
-    logo o mesmo conjunto de status SEMPRE produz o mesmo percentual.
+    Parcial/Indeterminado/N/A) — a contagem e a divisão são sempre feitas
+    aqui, logo o mesmo conjunto de status SEMPRE produz o mesmo percentual.
+
+    "Parcial" entra no percentual com peso 0,5 — nem conta como conforme
+    (esconderia que parte dos elementos falha), nem como não conforme
+    (esconderia que parte já atende). Ex: 4 conformes + 2 parciais + 6
+    não conformes, total 12 → (4 + 2×0,5) / 12 = 41,7%.
 
     Também calcula "percentual_sobre_verificaveis": conformidade excluindo
     itens N/A do denominador. Itens N/A significam "não se aplica a este
@@ -1544,17 +1577,20 @@ def calcular_resumo(resultados: list[dict]) -> dict:
     categorias = [classificar_status(r.get("status", "")) for r in resultados]
 
     conformes      = categorias.count("Conforme")
+    parciais       = categorias.count("Parcial")
     nao_conformes  = categorias.count("Não Conforme")
     indeterminados = categorias.count("Indeterminado")
     na             = categorias.count("N/A")
 
+    pontos = conformes + 0.5 * parciais
     verificaveis = total - na
-    pct_bruto              = round(conformes / total * 100, 1) if total else 0.0
-    pct_sobre_verificaveis = round(conformes / verificaveis * 100, 1) if verificaveis else 0.0
+    pct_bruto              = round(pontos / total * 100, 1) if total else 0.0
+    pct_sobre_verificaveis = round(pontos / verificaveis * 100, 1) if verificaveis else 0.0
 
     return {
         "total": total,
         "conformes": conformes,
+        "parciais": parciais,
         "nao_conformes": nao_conformes,
         "indeterminados": indeterminados,
         "na": na,
@@ -1566,6 +1602,7 @@ def calcular_resumo(resultados: list[dict]) -> dict:
 def status_badge(status: str) -> str:
     badges = {
         "Conforme":      '<span class="badge badge-conforme">✅ Conforme</span>',
+        "Parcial":       '<span class="badge badge-parcial">▲ Parcial</span>',
         "Não Conforme":  '<span class="badge badge-nao">❌ Não Conforme</span>',
         "Indeterminado": '<span class="badge badge-indet">⚠️ Indeterminado</span>',
         "N/A":           '<span class="badge badge-na">— N/A</span>',
@@ -1585,6 +1622,7 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
     # status color map
     def st_color(s):
         sl = s.lower()
+        if "parcial" in sl: return "#7c3ac4"
         if "conforme" in sl and "não" not in sl and "nao" not in sl: return "#1ab87a"
         if "não" in sl or "nao" in sl: return "#e03c3c"
         if "indet" in sl: return "#e8920a"
@@ -1596,9 +1634,10 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
         gid_cell = f'<code style="font-family:\'Courier New\',monospace;font-size:0.73em;background:#eef1f8;border:1px solid #c5cad8;border-radius:4px;padding:2px 7px;color:rgb(28,96,241);letter-spacing:0.02em">{gid}</code>' if gid and gid != "—" else '<span style="color:#aab0be;font-size:0.8em">—</span>'
         st = it.get("status","N/A")
         rec = it.get("recomendacao","") or ""
+        confianca_tag = ' <span title="Avaliação qualitativa — recomenda-se confirmação humana" style="cursor:help">🔍</span>' if it.get("requer_confirmacao_humana") else ""
         rows += f"""
         <tr>
-          <td><code style="background:#f0f3fb;border-radius:4px;padding:2px 6px;font-size:0.8em;color:rgb(28,96,241)">{it.get('item_nbr','—')}</code></td>
+          <td><code style="background:#f0f3fb;border-radius:4px;padding:2px 6px;font-size:0.8em;color:rgb(28,96,241)">{it.get('item_nbr','—')}</code>{confianca_tag}</td>
           <td style="color:#3d4252">{it.get('categoria','—')}</td>
           <td style="color:#1a1d26;max-width:200px">{it.get('elemento','—')}</td>
           <td style="color:{st_color(st)};font-weight:700;white-space:nowrap">{st}</td>
@@ -1794,6 +1833,7 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
   <div class="resumo">
     <div class="card"><div class="num" style="color:#1a1d26">{resumo.get('total',0)}</div><div class="lbl">Total</div></div>
     <div class="card"><div class="num" style="color:#1ab87a">{resumo.get('conformes',0)}</div><div class="lbl">Conformes</div></div>
+    <div class="card"><div class="num" style="color:#7c3ac4">{resumo.get('parciais',0)}</div><div class="lbl">Parciais</div></div>
     <div class="card"><div class="num" style="color:#e03c3c">{resumo.get('nao_conformes',0)}</div><div class="lbl">Não Conformes</div></div>
     <div class="card"><div class="num" style="color:#e8920a">{resumo.get('indeterminados',0)}</div><div class="lbl">Indeterminados</div></div>
     <div class="card"><div class="num" style="color:#6b7280">{resumo.get('na',0)}</div><div class="lbl">N/A</div></div>
@@ -1807,6 +1847,8 @@ def gerar_relatorio_html(resultado: dict, modelo_nome: str) -> str:
   <div class="globalid-tip">
     💡 A coluna <strong>GlobalId</strong> é o identificador único do elemento no IFC — o "CPF" do elemento.
     Use-o no Revit (<em>Manage → Select by ID</em>), no Navisworks ou no BIMcollab para localizar o elemento diretamente no modelo.
+    <br>🔍 ao lado do item = avaliação qualitativa (baseada em nome/tipo, não em medição direta) — recomenda-se confirmação humana.
+    <br><span style="color:#7c3ac4;font-weight:700">▲ Parcial</span> = alguns dos elementos avaliados atendem ao critério e outros não (ver "Valor Encontrado" para a proporção).
   </div>
 
   <table>
@@ -1865,6 +1907,7 @@ def gerar_excel(resultado: dict, modelo_nome: str) -> bytes:
     H_FILL  = PatternFill("solid", fgColor="0A1628")
     SUB_FILL = PatternFill("solid", fgColor="111827")
     CONF_F  = PatternFill("solid", fgColor="064E3B")
+    PARC_F  = PatternFill("solid", fgColor="3B1064")
     NAO_F   = PatternFill("solid", fgColor="4C0519")
     INDET_F = PatternFill("solid", fgColor="4B2B06")
     NA_F    = PatternFill("solid", fgColor="1E293B")
@@ -1902,11 +1945,11 @@ def gerar_excel(resultado: dict, modelo_nome: str) -> bytes:
 
     # Data rows
     status_fills = {
-        "conforme": CONF_F, "não conforme": NAO_F, "nao conforme": NAO_F,
+        "conforme": CONF_F, "parcial": PARC_F, "não conforme": NAO_F, "nao conforme": NAO_F,
         "indeterminado": INDET_F, "n/a": NA_F
     }
     status_colors = {
-        "conforme": "10B981", "não conforme": "F87171", "nao conforme": "F87171",
+        "conforme": "10B981", "parcial": "C084FC", "não conforme": "F87171", "nao conforme": "F87171",
         "indeterminado": "FCD34D", "n/a": "64748B"
     }
 
@@ -1949,6 +1992,7 @@ def gerar_excel(resultado: dict, modelo_nome: str) -> bytes:
     ws2.append(["Data Auditoria", resultado.get("data_auditoria", datetime.now().strftime("%d/%m/%Y"))])
     ws2.append(["Total de Itens", resumo.get("total", 0)])
     ws2.append(["✅ Conformes", resumo.get("conformes", 0)])
+    ws2.append(["▲ Parciais", resumo.get("parciais", 0)])
     ws2.append(["❌ Não Conformes", resumo.get("nao_conformes", 0)])
     ws2.append(["⚠️ Indeterminados", resumo.get("indeterminados", 0)])
     ws2.append(["— N/A", resumo.get("na", 0)])
@@ -2278,7 +2322,7 @@ with tab_upload:
             log("🧮 Resumo e metadados recalculados em Python (não dependem do eco do LLM).")
 
             resumo = resultado["resumo"]
-            log(f"   Total: {resumo.get('total',0)} | ✅ {resumo.get('conformes',0)} | ❌ {resumo.get('nao_conformes',0)} | ⚠️ {resumo.get('indeterminados',0)}")
+            log(f"   Total: {resumo.get('total',0)} | ✅ {resumo.get('conformes',0)} | ▲ {resumo.get('parciais',0)} | ❌ {resumo.get('nao_conformes',0)} | ⚠️ {resumo.get('indeterminados',0)}")
             log(f"   Conformidade: {resumo.get('percentual_conformidade')} (bruta) | {resumo.get('percentual_sobre_verificaveis')} (sobre itens verificáveis, exclui N/A)")
 
             st.session_state.resultado = resultado
@@ -2318,6 +2362,7 @@ with tab_resultado:
         # Metrics
         total   = resumo.get("total", len(itens))
         conf    = resumo.get("conformes", 0)
+        parc    = resumo.get("parciais", 0)
         nconf   = resumo.get("nao_conformes", 0)
         indet   = resumo.get("indeterminados", 0)
         na      = resumo.get("na", 0)
@@ -2328,6 +2373,7 @@ with tab_resultado:
         <div class="metric-row">
           <div class="metric-card"><div class="metric-num c-blue">{total}</div><div class="metric-label">Total</div></div>
           <div class="metric-card"><div class="metric-num c-green">{conf}</div><div class="metric-label">Conformes</div></div>
+          <div class="metric-card"><div class="metric-num c-purple">{parc}</div><div class="metric-label">Parciais</div></div>
           <div class="metric-card"><div class="metric-num c-red">{nconf}</div><div class="metric-label">Não Conformes</div></div>
           <div class="metric-card"><div class="metric-num c-amber">{indet}</div><div class="metric-label">Indeterminados</div></div>
           <div class="metric-card"><div class="metric-num c-muted">{na}</div><div class="metric-label">N/A</div></div>
@@ -2358,8 +2404,8 @@ with tab_resultado:
         with col_f1:
             filter_status = st.multiselect(
                 "Filtrar por Status",
-                ["Conforme", "Não Conforme", "Indeterminado", "N/A"],
-                default=["Conforme", "Não Conforme", "Indeterminado", "N/A"]
+                ["Conforme", "Parcial", "Não Conforme", "Indeterminado", "N/A"],
+                default=["Conforme", "Parcial", "Não Conforme", "Indeterminado", "N/A"]
             )
         with col_f2:
             cats = sorted(set(it.get("categoria","") for it in itens if it.get("categoria")))
@@ -2397,7 +2443,7 @@ with tab_resultado:
               <td style="font-family:var(--mono);font-size:0.78rem;color:#94a3b8">{it.get('valor_exigido','—')}</td>
               <td>{gid_chip}</td>
               <td style="font-family:var(--mono);font-size:0.72rem;color:#475569">{it.get('tipo_ifc','—')}</td>
-              <td style="font-size:0.8rem;color:#f87171">{it.get('recomendacao','—') if 'nao' in it.get('status','').lower() or 'não' in it.get('status','').lower() else '<span style="color:#64748b">—</span>'}</td>
+              <td style="font-size:0.8rem;color:#f87171">{it.get('recomendacao','—') if classificar_status(it.get('status','')) in ('Não Conforme','Parcial','Indeterminado') else '<span style="color:#64748b">—</span>'}</td>
             </tr>"""
 
         st.markdown(f"""
