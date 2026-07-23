@@ -415,6 +415,21 @@ def extract_ifc_elements(ifc_path: str) -> dict:
                     return v
         return None
 
+    def buscar_todas_props(psets, *termos):
+        """
+        Como buscar_prop, mas coleta TODAS as ocorrências em vez de parar na
+        primeira. Necessário para elementos compostos — ex: um único IfcRailing
+        do Revit pode carregar 3 Psets diferentes ("Corrimão 1", "Corrimão 2",
+        "Corrimão superior"), cada um com sua própria propriedade "Altura".
+        Pegar só a primeira jogava fora 2 das 3 alturas reais do elemento.
+        """
+        achados = []
+        for pset_nome, ps in psets.items():
+            for k, v in ps.items():
+                if any(t in k.lower() for t in termos) and v is not None:
+                    achados.append({"pset": pset_nome, "propriedade": k, "valor": v})
+        return achados
+
     def limpar_nulos(obj):
         if isinstance(obj, dict):
             return {k: limpar_nulos(v) for k, v in obj.items() if v is not None}
@@ -437,6 +452,32 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         ]
     }
 
+    # ── Filtro PNE/PCD — usado em portas (4.6.6) e sanitários (7.x) ──────────
+    # A NBR 9050 item 4.6.6 (maçaneta tipo alavanca) é uma exigência geral de
+    # rota acessível, mas por decisão do projeto/thesis, aqui só é cobrada nas
+    # portas de sanitários PNE/PCD — as demais portas do modelo ficam fora do
+    # escopo dessa checagem específica. Verifica: (1) nome/tipo do próprio
+    # elemento; (2) se ausente, nome do IfcSpace que o contém.
+    TERMOS_ACESSIVEL = ["pne", "pcd"]
+    try:
+        from ifcopenshell.util.element import get_container as _get_container
+    except Exception:
+        _get_container = None
+
+    def eh_acessivel_pne(el, texto_proprio):
+        if any(t in texto_proprio for t in TERMOS_ACESSIVEL):
+            return True, "nome_elemento"
+        if _get_container:
+            try:
+                cont = _get_container(el)
+                if cont is not None and cont.is_a("IfcSpace"):
+                    nome_cont = ((getattr(cont, "Name", "") or "") + " " + (getattr(cont, "LongName", "") or "")).lower()
+                    if any(t in nome_cont for t in TERMOS_ACESSIVEL):
+                        return True, "nome_espaco_continente"
+            except Exception:
+                pass
+        return False, None
+
     # ── 1. PORTAS (6.11.2, 4.6.6) ────────────────────────────────────────────
     # IfcDoor IFC2X3: campo 9=OverallHeight, campo 10=OverallWidth (em metros)
     portas = []
@@ -448,18 +489,41 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         d["OverallHeight_m"] = round(float(oh), 3) if oh else None
         d["OverallWidth_m"]  = round(float(ow), 3) if ow else None
         d["Psets"] = todos_psets(el)
+
+        nome_porta = (getattr(el, "Name", "") or "").lower() + " " + (getattr(el, "ObjectType", "") or "").lower()
+        pne_ok, pne_fonte = eh_acessivel_pne(el, nome_porta)
+        d["pne_pcd_confirmado"] = pne_ok  # relevante só pro item 4.6.6 (maçaneta) — 6.11.2 (vão livre) vale pra todas
+        if pne_fonte:
+            d["pne_pcd_fonte"] = pne_fonte
+
         portas.append(d)
     resultado["elementos"]["IfcDoor"] = portas[:60]
     resultado["estatisticas_portas"] = _estatisticas_portas(portas)
+    n_portas_pne = sum(1 for p in portas if p.get("pne_pcd_confirmado"))
+    resultado["nota_portas_pne"] = (
+        f"{n_portas_pne} de {len(portas)} portas foram identificadas em ambiente/nome PNE/PCD. "
+        f"O item 4.6.6 (maçaneta tipo alavanca) deve ser avaliado SOMENTE nessas portas — "
+        f"as demais ficam fora do escopo desse item específico (mas continuam valendo para 6.11.2, vão livre)."
+    )
 
     # ── 2. RAMPAS (6.6) ─────────────────────────────────────────────────────
     def _geom_bbox_rise_run(el):
         """
         Fallback geométrico: quando não há OverallRise/OverallRun nem no atributo
-        direto nem no Pset, calcula uma ESTIMATIVA a partir da geometria bruta
-        (bounding box). rise = variação em Z; run = maior dimensão em planta (X ou Y).
-        É uma aproximação (assume rampa alinhada aos eixos) — sirva para destravar
-        a análise, mas sinalize para conferência manual.
+        direto nem no Pset, estima a partir da geometria bruta.
+
+        run = maior dimensão em planta (X ou Y) — essa parte é confiável.
+
+        rise = precisa de cuidado: a rampa é modelada como uma LAJE inclinada
+        com espessura própria (não uma superfície fina). Pegar direto
+        (Z_max global − Z_min global) do sólido inteiro conta a espessura da
+        laje NAS DUAS PONTAS junto com o desnível real, inflando o resultado
+        (confirmado num caso real: bbox bruto deu 0,51m onde o desnível real,
+        medido ponta a ponta pela cota média de cada extremidade, era 0,36m —
+        diferença suficiente pra trocar "Não Conforme" por "Conforme").
+        Para evitar isso: agrupa os vértices pelas pontas ao longo do eixo de
+        percurso (percentis 15/85) e compara a cota Z MÉDIA de cada ponta —
+        isso cancela a espessura da laje, que aparece igualmente nas duas pontas.
         """
         try:
             import ifcopenshell.geom
@@ -468,9 +532,21 @@ def extract_ifc_elements(ifc_path: str) -> dict:
             gset.set(gset.USE_WORLD_COORDS, True)
             shape = ifcopenshell.geom.create_shape(gset, el)
             verts = np.array(shape.geometry.verts).reshape(-1, 3)
-            rise = round(float(verts[:, 2].max() - verts[:, 2].min()), 3)
-            run = round(float(max(verts[:, 0].max() - verts[:, 0].min(),
-                                   verts[:, 1].max() - verts[:, 1].min())), 3)
+
+            x_range = verts[:, 0].max() - verts[:, 0].min()
+            y_range = verts[:, 1].max() - verts[:, 1].min()
+            axis_idx = 0 if x_range >= y_range else 1
+            run = round(float(max(x_range, y_range)), 3)
+
+            axis_vals = verts[:, axis_idx]
+            lo, hi = np.percentile(axis_vals, [15, 85])
+            grupo_inicio = verts[axis_vals <= lo]
+            grupo_fim    = verts[axis_vals >= hi]
+            if len(grupo_inicio) and len(grupo_fim):
+                rise = round(float(abs(grupo_fim[:, 2].mean() - grupo_inicio[:, 2].mean())), 3)
+            else:
+                rise = round(float(verts[:, 2].max() - verts[:, 2].min()), 3)  # fallback bruto
+
             return rise, run
         except Exception:
             return None, None
@@ -541,35 +617,57 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         ps = todos_psets(el)
         d["Psets"] = ps
 
-        # ── Estratégia dupla: atributo direto (IFC2X3) → Pset (IFC4) ──
-        # IFC2X3: NumberOfRisers/RiserHeight/TreadLength são atributos nativos de
-        #         IfcStairFlight, exportados pelo Revit EM PÉS.
-        # IFC4:   buildingSMART moveu esses dados para dentro de Pset_StairFlightCommon/
-        #         Pset_StairCommon, com o nome NO SINGULAR ("NumberOfRiser"), e o Revit
-        #         já exporta em METROS. Sem esse fallback, um IFC4 sempre voltava N/D
-        #         mesmo com o dado presente no arquivo.
+        # ── Estratégia por CAMPO (não por elemento inteiro): cada campo tenta o
+        # atributo direto (IFC2X3, em pés) e, se vier vazio, cai pro Pset (IFC4,
+        # "NumberOfRiser" no singular, já em metros) — independentemente dos
+        # outros campos. Isso cobre o caso real de um Revit preencher RiserHeight
+        # automaticamente mas deixar NumberOfRisers em branco (ou vice-versa),
+        # que a versão anterior (cascata por elemento) não pegava.
         nr_attr = getattr(el, "NumberOfRisers", None)
+        nt_attr = getattr(el, "NumberOfTreads", None)
         rh_attr = getattr(el, "RiserHeight", None)
         tl_attr = getattr(el, "TreadLength", None)
-        nt_attr = getattr(el, "NumberOfTreads", None)
 
-        if nr_attr or rh_attr:
+        fontes = []
+
+        if nr_attr is not None:
             nr = nr_attr
-            nt = nt_attr
-            rh_m = round(float(rh_attr) * FT_TO_M, 4) if rh_attr else None
-            tl_m = round(float(tl_attr) * FT_TO_M, 4) if tl_attr else None
-            d["fonte_dados_escada"] = "atributo_direto_ifc2x3_pes"
+            fontes.append("NumberOfRisers:atributo")
         else:
             nr = buscar_prop(ps, "numberofriser", "numberofrisers", "número de espelhos", "numero de espelhos")
-            nt = buscar_prop(ps, "numberoftread", "número de pisos", "numero de pisos")
-            rh_val = buscar_prop(ps, "riserheight", "altura do espelho")
-            tl_val = buscar_prop(ps, "treadlength", "largura do piso")
-            rh_m = round(float(rh_val), 4) if rh_val else None
-            tl_m = round(float(tl_val), 4) if tl_val else None
-            d["fonte_dados_escada"] = "pset_ifc4_metros" if rh_m else "nao_encontrado"
+            if nr is not None:
+                fontes.append("NumberOfRisers:pset")
 
-        d["NumberOfRisers"] = int(float(nr)) if nr else None
-        d["NumberOfTreads"] = int(float(nt)) if nt else None
+        if nt_attr is not None:
+            nt = nt_attr
+            fontes.append("NumberOfTreads:atributo")
+        else:
+            nt = buscar_prop(ps, "numberoftread", "número de pisos", "numero de pisos")
+            if nt is not None:
+                fontes.append("NumberOfTreads:pset")
+
+        if rh_attr is not None:
+            rh_m = round(float(rh_attr) * FT_TO_M, 4)
+            fontes.append("RiserHeight:atributo_pes")
+        else:
+            rh_pset = buscar_prop(ps, "riserheight", "altura do espelho")
+            rh_m = round(float(rh_pset), 4) if rh_pset is not None else None
+            if rh_m is not None:
+                fontes.append("RiserHeight:pset_metros")
+
+        if tl_attr is not None:
+            tl_m = round(float(tl_attr) * FT_TO_M, 4)
+            fontes.append("TreadLength:atributo_pes")
+        else:
+            tl_pset = buscar_prop(ps, "treadlength", "largura do piso")
+            tl_m = round(float(tl_pset), 4) if tl_pset is not None else None
+            if tl_m is not None:
+                fontes.append("TreadLength:pset_metros")
+
+        d["fonte_dados_escada"] = ", ".join(fontes) if fontes else "nao_encontrado"
+
+        d["NumberOfRisers"] = int(float(nr)) if nr is not None else None
+        d["NumberOfTreads"] = int(float(nt)) if nt is not None else None
         d["RiserHeight_m"]  = rh_m
         d["TreadLength_m"]  = tl_m
 
@@ -594,22 +692,47 @@ def extract_ifc_elements(ifc_path: str) -> dict:
     )
 
     # ── 4. CORRIMÕES / GUARDA-CORPOS (5.4.3) ─────────────────────────────────
-    # Modelo tem IfcRailing mas como "Guarda-corpo" — não como corrimão separado
+    TOLERANCIA_ALTURA = 0.03  # 3cm de tolerância pra bater com 0,70m/0,92m
     corrimaos = []
+    algum_com_corrimao_duplo = False
     for el in ifc.by_type("IfcRailing"):
         d = info_basica(el, "IfcRailing")
         ps = todos_psets(el)
         d["Psets"] = ps
-        d["Height_m"] = buscar_prop(ps, "height", "altura")
+
+        # Um único IfcRailing pode conter VÁRIOS sub-Psets com "Altura" própria
+        # (ex: corrimão inferior, corrimão superior, guarda-corpo) — coleta todas,
+        # não só a maior/primeira encontrada.
+        alturas_encontradas = buscar_todas_props(ps, "altura", "height")
+        d["alturas_detalhadas"] = alturas_encontradas
+        valores = sorted({round(float(a["valor"]), 3) for a in alturas_encontradas})
+        d["alturas_m"] = valores
+
+        tem_070 = any(abs(v - 0.70) <= TOLERANCIA_ALTURA for v in valores)
+        tem_092 = any(abs(v - 0.92) <= TOLERANCIA_ALTURA for v in valores)
+        d["corrimao_duplo_070_092"] = tem_070 and tem_092
+        if d["corrimao_duplo_070_092"]:
+            algum_com_corrimao_duplo = True
+
         nome = (getattr(el, "Name", "") or "").lower()
         d["tipo_elemento"] = "guarda-corpo" if "guarda" in nome else ("corrimao" if "corrim" in nome else "railing")
         corrimaos.append(d)
+
     resultado["elementos"]["Corrimaos"] = corrimaos
-    resultado["nota_corrimaos"] = (
-        f"Modelo tem {contar('IfcRailing')} IfcRailing, todos nomeados 'Guarda-corpo'. "
-        f"Não foram identificados corrimões separados (altura 0,70m e 0,92m). "
-        f"Verifique se corrimões estão modelados junto às escadas ou ausentes."
-    )
+    if not corrimaos:
+        resultado["nota_corrimaos"] = "Modelo não tem nenhum IfcRailing."
+    elif algum_com_corrimao_duplo:
+        resultado["nota_corrimaos"] = (
+            f"Modelo tem {len(corrimaos)} IfcRailing. Pelo menos um contém, em Psets separados dentro do "
+            f"MESMO elemento, alturas compatíveis com corrimão duplo (0,70m e 0,92m) — verifique o campo "
+            f"'alturas_m' de cada item para ver todas as alturas detectadas por elemento."
+        )
+    else:
+        alturas_todas = sorted({v for c in corrimaos for v in c.get("alturas_m", [])})
+        resultado["nota_corrimaos"] = (
+            f"Modelo tem {len(corrimaos)} IfcRailing. Alturas encontradas nos Psets: {alturas_todas or 'nenhuma'}. "
+            f"Nenhum elemento apresentou as duas alturas normativas (0,70m e 0,92m) simultaneamente."
+        )
 
     # ── 5. ESPAÇOS (6.11.1, 7.5) — análise geométrica real ───────────────────
     espacos = []
@@ -762,32 +885,6 @@ def extract_ifc_elements(ifc_path: str) -> dict:
         except Exception:
             pass
         return None
-
-    # ── Filtro PNE/PCD — só analisa como "banheiro acessível" quem tem a tag no nome ──
-    # Sem isso, o auditor tratava QUALQUER banheiro do modelo como se precisasse
-    # cumprir as dimensões de acessibilidade (giro 1,50m, altura de bacia etc.),
-    # quando a NBR 9050 só exige isso dos sanitários efetivamente designados como
-    # acessíveis. Verifica: (1) nome/tipo do próprio elemento; (2) se ausente, nome
-    # do IfcSpace que o contém (quando o modelo exporta IfcSpace).
-    TERMOS_ACESSIVEL = ["pne", "pcd"]
-    try:
-        from ifcopenshell.util.element import get_container as _get_container
-    except Exception:
-        _get_container = None
-
-    def eh_acessivel_pne(el, texto_proprio):
-        if any(t in texto_proprio for t in TERMOS_ACESSIVEL):
-            return True, "nome_elemento"
-        if _get_container:
-            try:
-                cont = _get_container(el)
-                if cont is not None and cont.is_a("IfcSpace"):
-                    nome_cont = ((getattr(cont, "Name", "") or "") + " " + (getattr(cont, "LongName", "") or "")).lower()
-                    if any(t in nome_cont for t in TERMOS_ACESSIVEL):
-                        return True, "nome_espaco_continente"
-            except Exception:
-                pass
-        return False, None
 
     TERMOS_BACIA    = ["bacia", "vaso", "toilet", "wc", "p.505", "vogue plus p", "caixa acoplada"]
     TERMOS_LAVAT    = [
@@ -1049,11 +1146,13 @@ def _resumo_elementos(elementos: dict) -> str:
     corrimaos = elems.get("Corrimaos", [])
     linhas.append(f"\n## CORRIMÕES / GUARDA-CORPOS (IfcRailing) — {len(corrimaos)} elementos")
     for c in corrimaos[:8]:
-        gid  = c.get("GlobalId","?")
-        nome = c.get("Name","?")
-        tipo = c.get("tipo_elemento","?")
-        h    = c.get("Height_m","N/D")
-        linhas.append(f"  [{gid}] {nome} | Tipo={tipo} | Altura={h}")
+        gid    = c.get("GlobalId","?")
+        nome   = c.get("Name","?")
+        tipo   = c.get("tipo_elemento","?")
+        alturas = c.get("alturas_m", [])
+        duplo  = c.get("corrimao_duplo_070_092", False)
+        linhas.append(f"  [{gid}] {nome} | Tipo={tipo}")
+        linhas.append(f"    Alturas encontradas nos Psets deste elemento: {alturas if alturas else 'N/D'} | Corrimão duplo (0,70m e 0,92m)? {'SIM' if duplo else 'não'}")
     if not corrimaos:
         linhas.append("  Nenhum IfcRailing encontrado")
 
@@ -1230,6 +1329,11 @@ REGRAS OBRIGATÓRIAS DE AUDITORIA
 
 2. Para ESCADAS: use o campo "desnivel_m" já calculado (NumberOfRisers × RiserHeight_m).
    RiserHeight já está convertido de pés para metros. Desnível > 0,19m → corrimão obrigatório.
+   Para verificar o corrimão (item 5.4.3): um único IfcRailing pode conter VÁRIAS alturas
+   diferentes (campo "alturas_m" — cada valor vem de um sub-Pset do mesmo elemento, ex:
+   corrimão inferior + corrimão superior + guarda-corpo). NÃO conclua "sem corrimão duplo"
+   só porque o Name do elemento diz "Guarda-corpo" — confira a lista "alturas_m" e o campo
+   "corrimao_duplo_070_092" de cada IfcRailing antes de decidir o status.
 
 3. Para CORREDORES sem IfcSpace: use a amostra de paredes para estimar distâncias,
    ou marque "Indeterminado" com recomendação específica de adicionar IfcSpace.
@@ -1254,6 +1358,14 @@ REGRAS OBRIGATÓRIAS DE AUDITORIA
    n_nao_conformes_altura forem > 0, o status é "Não Conforme" (não "Conforme"),
    mesmo que a amostra pareça toda ok. Cite os GlobalIds não conformes listados.
 
+10. Para o item 4.6.6 (maçaneta tipo alavanca): avalie SOMENTE as portas com
+    "pne_pcd_confirmado": true (ver "nota_portas_pne"). Portas sem essa tag NÃO
+    entram nessa verificação — não as cite como não conformes nem indeterminadas
+    para este item. Se nenhuma porta tiver "pne_pcd_confirmado": true, retorne
+    status "N/A" para o item 4.6.6, explicando que nenhuma porta foi associada
+    a sanitário/ambiente PNE/PCD. O item 6.11.2 (vão livre) continua valendo
+    para todas as portas normalmente, independente dessa tag.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ITENS A VERIFICAR
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1267,6 +1379,10 @@ DADOS DO MODELO IFC (use estes dados para verificar cada item acima)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FORMATO DE RESPOSTA — JSON VÁLIDO, SEM MARKDOWN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ O exemplo abaixo mostra APENAS A ESTRUTURA esperada. Os valores de
+"elemento", "valor_encontrado" e "status" são fictícios — NÃO os copie nem
+os use como referência de conteúdo. Preencha cada campo com o que você
+efetivamente observou nos DADOS DO MODELO IFC acima, item por item.
 
 {{
   "modelo": "{modelo_nome}",
@@ -1274,16 +1390,16 @@ FORMATO DE RESPOSTA — JSON VÁLIDO, SEM MARKDOWN
   "data_auditoria": "{datetime.now().strftime('%d/%m/%Y')}",
   "resultados": [
     {{
-      "item_nbr": "5.4.3",
-      "categoria": "Escadas",
-      "subcategoria": "Corrimão",
-      "elemento": "92 lances de escada — desnível típico 2,83m",
-      "globalid": "0juK2FV415ofIzBp5eTKAv",
-      "tipo_ifc": "IfcStairFlight",
-      "valor_encontrado": "Desnível=2,83m > 0,19m; IfcRailing presentes como guarda-corpo, sem corrimão duplo confirmado",
-      "valor_exigido": "Corrimão em ambos os lados; alturas 0,70m e 0,92m",
-      "status": "Indeterminado",
-      "recomendacao": "Verificar se guarda-corpos modelados incluem corrimão nas alturas 0,70m e 0,92m."
+      "item_nbr": "<código do item, ex: 6.11.2>",
+      "categoria": "<categoria>",
+      "subcategoria": "<subcategoria>",
+      "elemento": "<contagem/descrição do(s) elemento(s) verificado(s) — preencher com dado real>",
+      "globalid": "<GlobalId real do elemento mais representativo>",
+      "tipo_ifc": "<classe IFC, ex: IfcDoor>",
+      "valor_encontrado": "<valor medido/observado nos dados fornecidos>",
+      "valor_exigido": "<critério normativo do item>",
+      "status": "<Conforme | Não Conforme | Indeterminado | N/A>",
+      "recomendacao": "<ação concreta, só se Não Conforme ou Indeterminado>"
     }}
   ],
   "resumo": {{
